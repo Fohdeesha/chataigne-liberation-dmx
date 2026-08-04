@@ -113,6 +113,12 @@ function moduleParameterChanged(param) {
 		return;
 	}
 
+	var glob = getGlobalContainer();
+	if (glob != null && parent.is(glob)) {
+		if (param.niceName == "Master Intensity") pushAllZones();  // the follow toggles act on the next clip change
+		return;
+	}
+
 	if (suspendUpdates || !ready) return;
 
 	// first message-thread event after a load where the opening push found no universe
@@ -128,6 +134,8 @@ function moduleParameterChanged(param) {
 		pushAllZones();
 		return;
 	}
+
+	if (name == "Clip") applyClipFollows(zoneIndex);
 
 	pushZone(zoneIndex);
 }
@@ -243,6 +251,32 @@ function zoneProfileSize(z) {
 	var p = z.getChild("Profile");
 	if (p == null) return PROFILE_EXTENDED_SIZE;
 	return toInt(p.get()) == PROFILE_BASIC_SIZE ? PROFILE_BASIC_SIZE : PROFILE_EXTENDED_SIZE;
+}
+
+// ============================================================
+// Clip follow actions
+// ============================================================
+// Lets a trigger or mapping just set the clip: the zone arms itself and comes up
+// at full, instead of needing Arm and Intensity sent alongside every clip change.
+// Selecting "None" disarms again, so Clear Clip is a real blackout.
+// Runs with updates suspended so the whole change goes out as one push, and it
+// restores the previous suspend state because commands call it while suspended.
+function applyClipFollows(index) {
+	var z = getZoneContainer(index);
+	if (z == null) return;
+
+	var armFollows = getGlobalValue("Arm Follows Clip", true);
+	var intensityFollows = getGlobalValue("Intensity Follows Clip", true);
+	if (!armFollows && !intensityFollows) return;
+
+	var slot = toInt(z.getChild("Clip").get());
+	var wasSuspended = suspendUpdates;
+	suspendUpdates = true;
+
+	if (armFollows) z.getChild("Arm").set(slot > 0);
+	if (intensityFollows && slot > 0) z.getChild("Intensity").set(1);
+
+	suspendUpdates = wasSuspended;
 }
 
 // ============================================================
@@ -401,7 +435,7 @@ function buildZoneBytes(z, size) {
 
 	// Arm: Liberation enables output at 250-255, disables below
 	b[CH_ARM - 1] = (enabled && armed) ? 255 : 0;
-	b[CH_INTENSITY - 1] = dmx8FromUnit(z.getChild("Intensity").get());
+	b[CH_INTENSITY - 1] = dmx8FromUnit(z.getChild("Intensity").get() * getGlobalValue("Master Intensity", 1));
 
 	var slot = clampInt(toInt(z.getChild("Clip").get()), 0, SLOTS_PER_PAGE);
 	b[CH_GOBO_BANK - 1] = clampInt(toInt(z.getChild("Page").get()), 0, 255);
@@ -506,6 +540,7 @@ function cmdSelectClip(zone, page, clip) {
 		suspendUpdates = true;
 		z.getChild("Page").setData(toInt(page));
 		z.getChild("Clip").setData(toInt(clip));
+		applyClipFollows(idx[i]);            // the param-change path is suspended here, so do it explicitly
 		suspendUpdates = false;
 		pushZone(idx[i]);
 	}
@@ -559,6 +594,13 @@ function cmdSetTempoOverride(zone, bpm) {
 }
 
 function cmdClearTempoOverride(zone) { setOnZones(zone, "Tempo Override", false); }
+
+function cmdSetMasterIntensity(value) {
+	var glob = getGlobalContainer();
+	if (glob == null) return;
+	var p = glob.getChild("Master Intensity");
+	if (p != null) p.set(value);         // change handler re-pushes every zone
+}
 
 // ============================================================
 // Command helpers
@@ -631,12 +673,15 @@ function setFXParam(zone, fx, paramName, value) {
 // Tree helpers
 // ============================================================
 function getSetupContainer() { return findContainer(local.parameters, "Setup"); }
+function getGlobalContainer() { return findContainer(local.parameters, "Global"); }
 function getZonesContainer() { return findContainer(local.parameters, "Zones"); }
 
-function getSetupValue(name, fallback) {
-	var setup = getSetupContainer();
-	if (setup == null) return fallback;
-	var p = setup.getChild(name);
+function getSetupValue(name, fallback) { return containerValue(getSetupContainer(), name, fallback); }
+function getGlobalValue(name, fallback) { return containerValue(getGlobalContainer(), name, fallback); }
+
+function containerValue(cc, name, fallback) {
+	if (cc == null) return fallback;
+	var p = cc.getChild(name);
 	return p == null ? fallback : p.get();
 }
 

@@ -48,6 +48,20 @@ Input drives a *separate render pass* per zone, with its own transforms. See
 | **Rebuild Zones** | Rebuilds the tree, re-sends everything, re-runs the sanity checks. Also the recovery button if anything ever looks stuck. |
 | **Log Addressing** | Prints each zone's universe / channel range / profile to the log, ready to copy into Liberation. |
 
+## Global options
+
+So a trigger or mapping can just set a clip and have it show, without also sending
+Arm and Intensity every time.
+
+| Parameter | Default | What it does |
+|---|---|---|
+| **Arm Follows Clip** | on | Selecting a clip arms that zone; selecting `None` disarms it. ⚠️ With this on, choosing a clip **immediately enables laser output** for the zone. Turn it off to drive Arm yourself. |
+| **Intensity Follows Clip** | on | Selecting a clip also sets that zone's Intensity to full, so a clip never lands on a zone someone left dimmed. |
+| **Master Intensity** | 1.0 | Grand master: scales every zone's Intensity on the way out. It does not overwrite the per-zone values, so pulling it down and back up restores the look. Also available as the **Set Master Intensity** command for mappings. |
+
+With the defaults, `Select Clip` on its own is enough to put light in the air — and
+`Clear Clip` is a real blackout again.
+
 The module presets the DMX side for you: **DMX Type = Art-Net**, Send Rate 40 Hz,
 Send On Change Only off. Set **Remote Host** (under the ArtNet device parameters)
 if Liberation is on another machine — it defaults to `127.0.0.1`.
@@ -62,8 +76,8 @@ whole block immediately.
 | Enabled | bool | Off forces Arm to 0 — the zone keeps streaming but stops rendering. |
 | Profile | enum | Must match the profile chosen for that zone in Liberation. |
 | Universe / Start Address | int | Read-only while Auto Address is on. |
-| Arm | bool | On = 255. Liberation only renders with Arm ≥ 250. |
-| Intensity | 0..1 | 0–100% brightness. |
+| Arm | bool | On = 255. Liberation only renders with Arm ≥ 250. Set for you when **Arm Follows Clip** is on. |
+| Intensity | 0..1 | 0–100% brightness, scaled by **Master Intensity** on the way out. |
 | Page | enum | Clip deck page (Gobo Bank). |
 | Clip | enum | `None (no clip)` or `Col C - Row R`, in the deck's own fill order. |
 | Colour | RGBA | Desk RGB. Alpha ignored — use Intensity. |
@@ -89,6 +103,7 @@ marked below with `*` is the one a Mapping feeds.
 - **Transform** — Set Position `*` (2D mapping → X/Y), Set Position X `*`, Set Position Y `*`, Set Scale `*`, Set Scale X `*`, Set Scale Y `*`, Set Zoom `*`, Set Rotation `*`
 - **Effects** — Set FX Level `*`, Set FX Parameter `*`, Clear Effects
 - **Tempo** — Set Tempo Override `*` (BPM; also switches the override on), Clear Tempo Override
+- **Global** — Set Master Intensity `*` (grand master across all zones)
 
 Commands write the zone's parameters, so the module panel always shows what was
 last sent.
@@ -97,7 +112,8 @@ last sent.
 
 **Nothing goes out until a zone is armed.** Liberation renders the DMX pass only
 when the profile is active, Arm ≥ 250, a clip is selected, and Intensity > 0. A
-silent rig is almost always Arm off or Clip = None.
+silent rig is almost always Arm off or Clip = None — which is what **Arm Follows
+Clip** and **Intensity Follows Clip** above exist to take care of.
 
 **Staleness is handled for you.** Liberation drops a zone after 2 s without fresh
 data; Chataigne's DMX module re-sends every output universe continuously at Send

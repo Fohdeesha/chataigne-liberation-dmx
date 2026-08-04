@@ -2,7 +2,7 @@
 	"name": "Liberation DMX",
 	"type": "DMX",
 	"path": "Software",
-	"version": "1.0.1",
+	"version": "1.1.0",
 	"description": "Drive Liberation laser software through its DMX Input system (Art-Net / sACN). Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind Page + Clip dropdowns; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
 	"url": "https://github.com/Fohdeesha/chataigne-liberation-dmx",
 	"downloadURL": "https://github.com/Fohdeesha/chataigne-liberation-dmx/archive/refs/heads/master.zip",
@@ -80,6 +80,31 @@
 				"type": "Trigger",
 				"description": "Print each zone's universe, channel range and profile to the log, so it can be copied into Liberation's DMX Input window."
 			}
+		},
+		"Global":
+		{
+			"type": "Container",
+			"Arm Follows Clip":
+			{
+				"type": "Boolean",
+				"default": true,
+				"description": "Selecting a clip arms that zone automatically, and selecting 'None' disarms it, so a trigger or mapping only has to set the clip. SAFETY: with this on, choosing a clip immediately enables laser output for the zone. Turn it off to drive the Arm channel yourself."
+			},
+			"Intensity Follows Clip":
+			{
+				"type": "Boolean",
+				"default": true,
+				"description": "Selecting a clip also sets that zone's Intensity to full (255), so a clip never lands on a zone that was left dimmed."
+			},
+			"Master Intensity":
+			{
+				"type": "Float",
+				"min": 0,
+				"max": 1,
+				"default": 1,
+				"ui": "slider",
+				"description": "Grand master: scales every zone's Intensity on the way out to DMX. Does not change the per-zone Intensity values, so pulling it down and back up restores the look."
+			}
 		}
 	},
 
@@ -131,6 +156,16 @@
 			"parameters":
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to reset to Liberation's recommended defaults (Arm off, intensity 1, white, centred, no clip). 0 = all zones." }
+			}
+		},
+
+		"Set Master Intensity":
+		{
+			"menu": "Global",
+			"callback": "cmdSetMasterIntensity",
+			"parameters":
+			{
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 1, "mappingIndex": 0, "description": "Grand master applied to every zone's Intensity on the way out." }
 			}
 		},
 
