@@ -1,0 +1,12 @@
+# OS / editor cruft
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
+.vscode/
+.idea/
+
+# Chataigne working files - a module folder should only ever hold the module
+*.noisette
+*.noisette.bak

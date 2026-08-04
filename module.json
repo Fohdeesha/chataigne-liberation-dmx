@@ -1,0 +1,332 @@
+{
+	"name": "Liberation DMX",
+	"type": "DMX",
+	"path": "Software",
+	"version": "0.1.0",
+	"description": "Drive Liberation laser software through its DMX Input system (Art-Net / sACN). Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind Page + Clip dropdowns; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
+	"url": "",
+
+	"hasInput": false,
+	"hasOutput": true,
+	"hideDefaultCommands": true,
+	"hideDefaultParameters": [ "autoAdd", "sendOnChangeOnly" ],
+
+	"defaults":
+	{
+		"dmxType": "Art-Net",
+		"sendRate": 40,
+		"sendOnChangeOnly": false,
+		"autoAdd": false
+	},
+
+	"scripts":
+	[
+		"liberationDMX.js"
+	],
+
+	"parameters":
+	{
+		"Setup":
+		{
+			"type": "Container",
+			"Zone Count":
+			{
+				"type": "Integer",
+				"min": 0,
+				"max": 8,
+				"default": 1,
+				"description": "How many Liberation zones to control. Each zone gets its own channel block and its own DMX Input profile row in Liberation."
+			},
+			"New Zone Profile":
+			{
+				"type": "Enum",
+				"options":
+				{
+					"Extended 32ch": "extended32",
+					"Basic 16ch": "basic16"
+				},
+				"description": "Profile given to zones as they are created. Each zone's own Profile parameter can be changed afterwards."
+			},
+			"Auto Address":
+			{
+				"type": "Boolean",
+				"default": true,
+				"description": "Stack zones automatically from Base Universe / Base Address, using each zone's profile size (16 or 32 channels). Turn off to set Universe and Start Address per zone by hand."
+			},
+			"Base Universe":
+			{
+				"type": "Integer",
+				"min": 1,
+				"max": 4096,
+				"default": 1,
+				"description": "Universe of the first zone, in Liberation's 1-based UI numbering. Universe 1 = Art-Net Port-Address 0. Only used when Auto Address is on."
+			},
+			"Base Address":
+			{
+				"type": "Integer",
+				"min": 1,
+				"max": 512,
+				"default": 1,
+				"description": "Start channel of the first zone (1-512). Only used when Auto Address is on."
+			},
+			"Rebuild Zones":
+			{
+				"type": "Trigger",
+				"description": "Recreate the zone tree and re-send every zone. Use after editing addresses by hand, or if the tree ever looks out of sync."
+			},
+			"Log Addressing":
+			{
+				"type": "Trigger",
+				"description": "Print each zone's universe, channel range and profile to the log, so it can be copied into Liberation's DMX Input window."
+			}
+		}
+	},
+
+	"commands":
+	{
+		"Set Arm":
+		{
+			"menu": "Zone",
+			"callback": "cmdSetArm",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"On": { "type": "Boolean", "default": true, "mappingIndex": 0, "description": "Arm channel: on sends 255 (output enabled), off sends 0." }
+			}
+		},
+		"Set Intensity":
+		{
+			"menu": "Zone",
+			"callback": "cmdSetIntensity",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 1, "mappingIndex": 0, "description": "0-1 mapped to 0-100% brightness." }
+			}
+		},
+		"Set Enabled":
+		{
+			"menu": "Zone",
+			"callback": "cmdSetEnabled",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"On": { "type": "Boolean", "default": true, "mappingIndex": 0, "description": "A disabled zone keeps streaming but forces its Arm channel to 0, so Liberation stops rendering it." }
+			}
+		},
+		"Blackout Zone":
+		{
+			"menu": "Zone",
+			"callback": "cmdBlackout",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 0, "description": "Zone to black out. 0 = all zones. Sets Arm off; the rest of the zone's state is left untouched." }
+			}
+		},
+		"Reset Zone":
+		{
+			"menu": "Zone",
+			"callback": "cmdResetZone",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to reset to Liberation's recommended defaults (Arm off, intensity 1, white, centred, no clip). 0 = all zones." }
+			}
+		},
+
+		"Select Clip":
+		{
+			"menu": "Clip",
+			"callback": "cmdSelectClip",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Page": { "type": "Enum", "options": { "Page 1": 0, "Page 2": 1, "Page 3": 2, "Page 4": 3, "Page 5": 4, "Page 6": 5, "Page 7": 6, "Page 8": 7 }, "description": "Clip deck page. Sent on the Gobo Bank channel." },
+				"Clip": { "type": "Enum", "options": { "None (no clip)": 0, "Col 1 - Row 1": 1, "Col 1 - Row 2": 2, "Col 1 - Row 3": 3, "Col 1 - Row 4": 4, "Col 1 - Row 5": 5, "Col 2 - Row 1": 6, "Col 2 - Row 2": 7, "Col 2 - Row 3": 8, "Col 2 - Row 4": 9, "Col 2 - Row 5": 10, "Col 3 - Row 1": 11, "Col 3 - Row 2": 12, "Col 3 - Row 3": 13, "Col 3 - Row 4": 14, "Col 3 - Row 5": 15, "Col 4 - Row 1": 16, "Col 4 - Row 2": 17, "Col 4 - Row 3": 18, "Col 4 - Row 4": 19, "Col 4 - Row 5": 20, "Col 5 - Row 1": 21, "Col 5 - Row 2": 22, "Col 5 - Row 3": 23, "Col 5 - Row 4": 24, "Col 5 - Row 5": 25, "Col 6 - Row 1": 26, "Col 6 - Row 2": 27, "Col 6 - Row 3": 28, "Col 6 - Row 4": 29, "Col 6 - Row 5": 30, "Col 7 - Row 1": 31, "Col 7 - Row 2": 32, "Col 7 - Row 3": 33, "Col 7 - Row 4": 34, "Col 7 - Row 5": 35, "Col 8 - Row 1": 36, "Col 8 - Row 2": 37, "Col 8 - Row 3": 38, "Col 8 - Row 4": 39, "Col 8 - Row 5": 40 }, "description": "Slot on the selected page, in the deck's own fill order (down a column, then across). Sent on the Gobo Select channel." }
+			}
+		},
+		"Set Page":
+		{
+			"menu": "Clip",
+			"callback": "cmdSetPage",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Page": { "type": "Enum", "options": { "Page 1": 0, "Page 2": 1, "Page 3": 2, "Page 4": 3, "Page 5": 4, "Page 6": 5, "Page 7": 6, "Page 8": 7 }, "description": "Clip deck page (Gobo Bank). The zone keeps its current slot." }
+			}
+		},
+		"Set Clip":
+		{
+			"menu": "Clip",
+			"callback": "cmdSetClip",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Clip": { "type": "Enum", "options": { "None (no clip)": 0, "Col 1 - Row 1": 1, "Col 1 - Row 2": 2, "Col 1 - Row 3": 3, "Col 1 - Row 4": 4, "Col 1 - Row 5": 5, "Col 2 - Row 1": 6, "Col 2 - Row 2": 7, "Col 2 - Row 3": 8, "Col 2 - Row 4": 9, "Col 2 - Row 5": 10, "Col 3 - Row 1": 11, "Col 3 - Row 2": 12, "Col 3 - Row 3": 13, "Col 3 - Row 4": 14, "Col 3 - Row 5": 15, "Col 4 - Row 1": 16, "Col 4 - Row 2": 17, "Col 4 - Row 3": 18, "Col 4 - Row 4": 19, "Col 4 - Row 5": 20, "Col 5 - Row 1": 21, "Col 5 - Row 2": 22, "Col 5 - Row 3": 23, "Col 5 - Row 4": 24, "Col 5 - Row 5": 25, "Col 6 - Row 1": 26, "Col 6 - Row 2": 27, "Col 6 - Row 3": 28, "Col 6 - Row 4": 29, "Col 6 - Row 5": 30, "Col 7 - Row 1": 31, "Col 7 - Row 2": 32, "Col 7 - Row 3": 33, "Col 7 - Row 4": 34, "Col 7 - Row 5": 35, "Col 8 - Row 1": 36, "Col 8 - Row 2": 37, "Col 8 - Row 3": 38, "Col 8 - Row 4": 39, "Col 8 - Row 5": 40 }, "description": "Slot on the zone's current page. 'None' sends Gobo Select 0 = no clip / blackout." }
+			}
+		},
+		"Clear Clip":
+		{
+			"menu": "Clip",
+			"callback": "cmdClearClip",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to clear (Gobo Select 0 = no clip). 0 = all zones." }
+			}
+		},
+
+		"Set Colour":
+		{
+			"menu": "Colour",
+			"callback": "cmdSetColour",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Colour": { "type": "Color", "default": [1, 1, 1, 1], "mappingIndex": 0, "description": "Desk RGB. Alpha is ignored - use Intensity for brightness." }
+			}
+		},
+		"Set Colour Blend":
+		{
+			"menu": "Colour",
+			"callback": "cmdSetColourBlend",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 1, "mappingIndex": 0, "description": "0 = clip's own colour, 1 = desk RGB colour." }
+			}
+		},
+
+		"Set Position":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetPosition",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Position": { "type": "Point2D", "min": [-1, -1], "max": [1, 1], "default": [0, 0], "mappingIndex": 0, "description": "-1..1 on both axes, (0,0) = centre. +X right, +Y DOWN (Liberation's own convention). Written to the 16-bit coarse/fine channel pairs." }
+			}
+		},
+		"Set Position X":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetPositionX",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 0, "mappingIndex": 0, "description": "-1 = full left, 0 = centre, 1 = full right. 16-bit." }
+			}
+		},
+		"Set Position Y":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetPositionY",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 0, "mappingIndex": 0, "description": "-1 = full up, 0 = centre, 1 = full down (+Y is down). 16-bit." }
+			}
+		},
+		"Set Scale":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetScale",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Scale": { "type": "Point2D", "min": [-1, -1], "max": [1, 1], "default": [1, 1], "mappingIndex": 0, "description": "-1 = -100%, 0 = 0%, 1 = +100% on each axis (DMX 0 / 128 / 255)." }
+			}
+		},
+		"Set Scale X":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetScaleX",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 1, "mappingIndex": 0, "description": "-1 = -100%, 0 = 0%, 1 = +100%." }
+			}
+		},
+		"Set Scale Y":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetScaleY",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 1, "mappingIndex": 0, "description": "-1 = -100%, 0 = 0%, 1 = +100%." }
+			}
+		},
+		"Set Zoom":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetZoom",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 1, "mappingIndex": 0, "description": "0 = collapsed, 1 = normal size." }
+			}
+		},
+		"Set Rotation":
+		{
+			"menu": "Transform",
+			"callback": "cmdSetRotation",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 0, "mappingIndex": 0, "description": "Spin speed: -1 = max counter-clockwise, 0 = stopped, 1 = max clockwise." }
+			}
+		},
+
+		"Set FX Level":
+		{
+			"menu": "Effects",
+			"callback": "cmdSetFXLevel",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones. Extended 32ch profile only." },
+				"FX": { "type": "Integer", "min": 1, "max": 4, "default": 1, "description": "Effect slot 1-4 (Liberation's first four effects)." },
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 0, "mappingIndex": 0, "description": "Effect depth / amount." }
+			}
+		},
+		"Set FX Parameter":
+		{
+			"menu": "Effects",
+			"callback": "cmdSetFXParameter",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones. Extended 32ch profile only." },
+				"FX": { "type": "Integer", "min": 1, "max": 4, "default": 1, "description": "Effect slot 1-4." },
+				"Parameter": { "type": "Integer", "min": 1, "max": 2, "default": 1, "description": "Which of the effect's first two exposed parameters to set." },
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 0.5, "mappingIndex": 0, "description": "0-1 mapped to 0-255. 0.5 is the recommended neutral value (DMX 128)." }
+			}
+		},
+		"Clear Effects":
+		{
+			"menu": "Effects",
+			"callback": "cmdClearEffects",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 0, "description": "Zone whose four FX levels go to 0 (parameters are left as they are). 0 = all zones." }
+			}
+		},
+
+		"Set Tempo Override":
+		{
+			"menu": "Tempo",
+			"callback": "cmdSetTempoOverride",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones. Extended 32ch profile only." },
+				"BPM": { "type": "Float", "min": 1, "max": 255, "default": 120, "mappingIndex": 0, "description": "Tempo for this zone's DMX-rendered content. Sent as coarse BPM + 1/256 fine." }
+			}
+		},
+		"Clear Tempo Override":
+		{
+			"menu": "Tempo",
+			"callback": "cmdClearTempoOverride",
+			"parameters":
+			{
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 0, "description": "Zone that goes back to following Liberation's own tempo. 0 = all zones." }
+			}
+		}
+	}
+}
