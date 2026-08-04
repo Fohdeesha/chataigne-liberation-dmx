@@ -104,6 +104,14 @@ data; Chataigne's DMX module re-sends every output universe continuously at Send
 Rate. Don't switch **Send On Change Only** on (it is hidden and defaulted off for
 exactly this reason).
 
+**After loading a project, the first push happens on the first change.** A module
+script's `init()` runs when Chataigne *creates* the module — before a saved project
+restores its Output Universes — so the opening push can land nowhere. The module
+notices this and re-sends every zone on the next parameter change, including the
+ones the project itself restores while loading, so in practice it heals during the
+load. To force it, hit **Rebuild Zones**; it's OSC-addressable and usable as an
+Action, so you can fire it from a startup State if you want a guarantee.
+
 **Universes must exist in the module.** Chataigne only transmits universes listed
 under *Module Parameters > Output Universes*, and a script cannot create them. The
 module ships with one (net 0 / subnet 0 / universe 0 = Liberation universe **1**),

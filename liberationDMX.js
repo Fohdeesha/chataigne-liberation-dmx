@@ -36,8 +36,13 @@ var SLOTS_PER_PAGE = 40;           // DECK_COLS * DECK_ROWS
 var NUM_PAGES = 8;
 var NUM_FX = 4;
 
-var PROFILE_EXTENDED = "extended32";
-var PROFILE_BASIC = "basic16";
+// Enum option data is the value we actually work with: an Enum's get() returns its
+// DATA, not its key (EnumParameter::getValue -> getValueData), and command callbacks
+// receive the same. So every enum here carries its meaning in the data: profile data
+// is the block size, page data is the bank index, clip data is the slot number.
+// Use setData() to write one, set() would expect a key.
+var PROFILE_EXTENDED_SIZE = 32;
+var PROFILE_BASIC_SIZE = 16;
 var PROFILE_EXTENDED_KEY = "Extended 32ch";
 var PROFILE_BASIC_KEY = "Basic 16ch";
 
@@ -75,6 +80,16 @@ var PAGE_KEYS = [];                // index = bank (0-based)
 var CLIP_KEYS = [];                // index = slot (0 = no clip)
 var warnedMissingZones = [];       // zone numbers already warned about, cleared on rebuild
 
+// sendUniverse() silently does nothing when the module holds no matching Output
+// Universe, and that is exactly the state right after a project loads: this script's
+// init() runs when the module is first created, before the project restores its
+// universes, so the opening push can land nowhere. Remember that it happened and
+// re-push on the next message-thread event so the zones recover on their own.
+// (A timed retry is not an option - script update() runs on a background thread and
+// Chataigne's script engine lock is disabled, so it would race the message thread.)
+var pendingFullPush = false;
+var universesVerified = false;     // once true, the lookup stays out of the hot path
+
 // ============================================================
 // Entry points
 // ============================================================
@@ -99,6 +114,9 @@ function moduleParameterChanged(param) {
 	}
 
 	if (suspendUpdates || !ready) return;
+
+	// first message-thread event after a load where the opening push found no universe
+	if (pendingFullPush) pushAllZones();
 
 	var zoneIndex = zoneIndexForParam(param, parent);
 	if (zoneIndex <= 0) return;
@@ -144,15 +162,8 @@ function buildLookupTables() {
 	}
 }
 
-function bankFromPageKey(key) {
-	var i = PAGE_KEYS.indexOf(key);
-	return i < 0 ? 0 : i;
-}
-
-function slotFromClipKey(key) {
-	var i = CLIP_KEYS.indexOf(key);
-	return i < 0 ? 0 : i;
-}
+// The key arrays above are only used to label the dropdowns. Each option's data is
+// its index, so Page data == bank and Clip data == slot, read straight off get().
 
 // Gobo Select is a 1-255 channel divided across 40 slots:
 //   slot = 1 + floor((gobo - 1) * 40 / 255)
@@ -193,7 +204,7 @@ function ensureZone(zones, index) {
 
 	// --- placement ---
 	addBool(z, "Enabled", "Stream this zone. When off the zone keeps streaming but its Arm channel is forced to 0, so Liberation stops rendering it.", true);
-	addEnum(z, "Profile", "Which Liberation DMX Input profile this zone uses. Must match the profile chosen for this zone in Liberation.", [PROFILE_EXTENDED_KEY, PROFILE_BASIC_KEY], [PROFILE_EXTENDED, PROFILE_BASIC], isNewZone ? newZoneProfileKey() : "");
+	addEnum(z, "Profile", "Which Liberation DMX Input profile this zone uses. Must match the profile chosen for this zone in Liberation.", [PROFILE_EXTENDED_KEY, PROFILE_BASIC_KEY], [PROFILE_EXTENDED_SIZE, PROFILE_BASIC_SIZE], isNewZone ? newZoneProfileKey() : "");
 	addInt(z, "Universe", "Universe in Liberation's 1-based UI numbering (1 = Art-Net Port-Address 0). Managed automatically unless Setup > Auto Address is off.", 1, 1, 4096);
 	addInt(z, "Start Address", "First channel of this zone's block (1-512). Managed automatically unless Setup > Auto Address is off.", 1, 1, 512);
 
@@ -225,14 +236,13 @@ function ensureZone(zones, index) {
 }
 
 function newZoneProfileKey() {
-	var v = getSetupValue("New Zone Profile", PROFILE_EXTENDED);
-	return v == PROFILE_BASIC_KEY || v == PROFILE_BASIC ? PROFILE_BASIC_KEY : PROFILE_EXTENDED_KEY;
+	return toInt(getSetupValue("New Zone Profile", PROFILE_EXTENDED_SIZE)) == PROFILE_BASIC_SIZE ? PROFILE_BASIC_KEY : PROFILE_EXTENDED_KEY;
 }
 
 function zoneProfileSize(z) {
 	var p = z.getChild("Profile");
-	if (p == null) return 32;
-	return p.get() == PROFILE_BASIC_KEY ? 16 : 32;
+	if (p == null) return PROFILE_EXTENDED_SIZE;
+	return toInt(p.get()) == PROFILE_BASIC_SIZE ? PROFILE_BASIC_SIZE : PROFILE_EXTENDED_SIZE;
 }
 
 // ============================================================
@@ -305,7 +315,7 @@ function validateAddressing() {
 
 		if (!outputUniverseExists(universe) && missingUniverses.indexOf(universe) < 0) {
 			missingUniverses.push(universe);
-			script.logWarning("Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes.");
+			script.logWarning("Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
 		}
 	}
 }
@@ -358,7 +368,9 @@ function outputUniverseExists(universe) {
 // Encoding + sending
 // ============================================================
 function pushAllZones() {
+	pendingFullPush = false;
 	for (var i = 1; i <= MAX_ZONES; i++) pushZone(i);
+	universesVerified = !pendingFullPush;
 }
 
 function pushZone(index) {
@@ -372,6 +384,11 @@ function pushZone(index) {
 	if (start + size - 1 > 512) return;              // already warned in validateAddressing()
 
 	var universe = toInt(z.getChild("Universe").get());
+	if (!universesVerified && !outputUniverseExists(universe)) {
+		pendingFullPush = true;                      // retried from moduleParameterChanged
+		return;
+	}
+
 	local.sendUniverse(universeNet(universe), universeSubnet(universe), universeUniverse(universe), start, buildZoneBytes(z, size));
 }
 
@@ -386,8 +403,8 @@ function buildZoneBytes(z, size) {
 	b[CH_ARM - 1] = (enabled && armed) ? 255 : 0;
 	b[CH_INTENSITY - 1] = dmx8FromUnit(z.getChild("Intensity").get());
 
-	var slot = slotFromClipKey(z.getChild("Clip").get());
-	b[CH_GOBO_BANK - 1] = clampInt(bankFromPageKey(z.getChild("Page").get()), 0, 255);
+	var slot = clampInt(toInt(z.getChild("Clip").get()), 0, SLOTS_PER_PAGE);
+	b[CH_GOBO_BANK - 1] = clampInt(toInt(z.getChild("Page").get()), 0, 255);
 	b[CH_GOBO_SELECT - 1] = goboValueForSlot(slot);
 
 	var col = z.getChild("Colour").get();
@@ -458,8 +475,8 @@ function cmdResetZone(zone) {
 		suspendUpdates = true;
 		z.getChild("Arm").set(false);
 		z.getChild("Intensity").set(1);
-		z.getChild("Page").set(PAGE_KEYS[0]);
-		z.getChild("Clip").set(CLIP_NONE_KEY);
+		z.getChild("Page").setData(0);
+		z.getChild("Clip").setData(0);
 		z.getChild("Colour").set([1, 1, 1, 1]);
 		z.getChild("Colour Blend").set(1);
 		z.getChild("Zoom").set(1);
@@ -480,21 +497,23 @@ function cmdResetZone(zone) {
 	}
 }
 
-function cmdSelectClip(zone, pageKey, clipKey) {
+// Enum command parameters arrive as their option data (bank index / slot number),
+// so these write with setData rather than set.
+function cmdSelectClip(zone, page, clip) {
 	var idx = zoneIndices(zone);
 	for (var i = 0; i < idx.length; i++) {
 		var z = getZoneContainer(idx[i]);
 		suspendUpdates = true;
-		z.getChild("Page").set(pageKey);
-		z.getChild("Clip").set(clipKey);
+		z.getChild("Page").setData(toInt(page));
+		z.getChild("Clip").setData(toInt(clip));
 		suspendUpdates = false;
 		pushZone(idx[i]);
 	}
 }
 
-function cmdSetPage(zone, pageKey) { setOnZones(zone, "Page", pageKey); }
-function cmdSetClip(zone, clipKey) { setOnZones(zone, "Clip", clipKey); }
-function cmdClearClip(zone) { setOnZones(zone, "Clip", CLIP_NONE_KEY); }
+function cmdSetPage(zone, page) { setDataOnZones(zone, "Page", toInt(page)); }
+function cmdSetClip(zone, clip) { setDataOnZones(zone, "Clip", toInt(clip)); }
+function cmdClearClip(zone) { setDataOnZones(zone, "Clip", 0); }
 
 function cmdSetColour(zone, colour) { setOnZones(zone, "Colour", colour); }
 function cmdSetColourBlend(zone, value) { setOnZones(zone, "Colour Blend", value); }
@@ -567,6 +586,14 @@ function setOnZones(zone, paramName, value) {
 	for (var i = 0; i < idx.length; i++) {
 		var p = getZoneContainer(idx[i]).getChild(paramName);
 		if (p != null) p.set(value);
+	}
+}
+
+function setDataOnZones(zone, paramName, data) {
+	var idx = zoneIndices(zone);
+	for (var i = 0; i < idx.length; i++) {
+		var p = getZoneContainer(idx[i]).getChild(paramName);
+		if (p != null) p.setData(data);
 	}
 }
 
