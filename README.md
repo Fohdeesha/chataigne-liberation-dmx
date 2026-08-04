@@ -107,7 +107,7 @@ whole block immediately.
 | Colour Blend | 0..1 | 0 = clip's own colour, 1 = desk RGB. |
 | Zoom | 0..1 | 0 = collapsed, 1 = normal size. |
 | Position | Point2D −1..1 | (0,0) = centre, **+X right, +Y down**. 16-bit. |
-| Scale | Point2D 0..1 | 0 = 0% (collapsed), 1 = 100% (normal size). |
+| Scale | Point2D −1..1 | −1 = −100% (mirrors the clip on that axis), 0 = 0% neutral (default), 1 = +100%. |
 | Rotation | −1..1 | Spin: −1 = max CCW, 0 = stopped, 1 = max CW. |
 | Tempo Override / Tempo BPM | bool + 1..255 | Extended profile only. Off = follow Liberation's tempo. |
 | FX 1–4 > Level, Param 1, Param 2 | 0..1 | Extended profile only. Param 1 / Param 2 are currently ignored by Liberation — see the warning at the top. |
@@ -164,12 +164,11 @@ Universe 1 = Art-Net Port-Address 0 = Chataigne net 0 / subnet 0 / universe 0.
 aren't transmitted. The parameters stay in the tree so switching profiles doesn't
 lose their values.
 
-**Scale only uses half its channel.** The DMX doc defines ch 10/11 as bipolar
-(0 → −100%, 128 → 0%, 255 → +100%) while recommending 255 as the default, but
-Liberation only renders the upper half correctly — below 128 you get broken
-geometry rather than a mirrored clip. So `Scale` is a plain **0..1** parameter
-mapped onto 128..255, defaulting to `1` (255 = normal size). Liberation's Live
-Monitor reads it back as the same percentage.
+**Scale is bipolar and negatives mirror.** Ch 10/11 run −100% / 0% / +100% across
+DMX 0 / 128 / 255, so `Scale` is a −1..1 Point2D passed straight through. Negative
+values mirror the clip on that axis — that is Liberation working as intended, not a
+glitch. The parameter defaults to **0** (DMX 128, neutral), so a fresh zone renders
+the clip as authored.
 
 **FX Param 1 / Param 2 currently do nothing** — see the warning at the top. The
 channels are transmitted correctly; Liberation ignores them. **FX Level** is

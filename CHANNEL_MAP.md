@@ -21,8 +21,8 @@ Channel numbers below are offsets *within* the block.
 | 7 | Blue | 255 | `Colour` B | `round(b * 255)` |
 | 8 | Colour Blend | 255 | `Colour Blend` 0..1 | `round(v * 255)` — 0 = clip colour, 255 = desk RGB |
 | 9 | Zoom | 255 | `Zoom` 0..1 | `round(v * 255)` — 0 = collapsed, 255 = normal |
-| 10 | Scale X | 255 | `Scale.x` 0..1 | `128 + round(v * 127)` → 128 / 255, see below |
-| 11 | Scale Y | 255 | `Scale.y` 0..1 | same |
+| 10 | Scale X | 255 | `Scale.x` −1..1 | `round((v + 1) * 127.5)` → 0 / 128 / 255 |
+| 11 | Scale Y | 255 | `Scale.y` −1..1 | same |
 | 12 | Position X coarse | 128 | `Position.x` −1..1 | 16-bit, high byte |
 | 13 | Position X fine | 0 | `Position.x` | 16-bit, low byte |
 | 14 | Position Y coarse | 128 | `Position.y` −1..1 | 16-bit, high byte |
@@ -65,21 +65,22 @@ i.e. 65536 steps — the fine byte is always written, never left at 0.
 The `Position` parameter is deliberately **not** Y-flipped: it uses Liberation's
 own convention so what you send matches the doc.
 
-## Scale — top half of the channel only
+## Scale — bipolar, negatives mirror
 
-The profile doc calls ch 10/11 bipolar: `0 = -100%`, `128 = 0%`, `255 = +100%`.
-In practice Liberation only renders the **upper** half sanely — anything below 128
-produces broken geometry, not a mirrored or shrunken clip. So `Scale` is a plain
-**0..1** parameter and the channel never leaves 128..255:
+Ch 10/11 are bipolar exactly as the profile doc describes: `0 = -100%`,
+`128 = 0%`, `255 = +100%`, and the parameter passes that through directly:
 
 ```
-scaleDMX = 128 + round(v * 127)        // v = 0..1  ->  128..255
+scaleDMX = round((v + 1) * 127.5)      // v = -1..1  ->  0 / 128 / 255
 ```
 
-`0 → 128` (0%, collapsed), `1 → 255` (100%, normal size — and Liberation's own
-recommended default). Liberation reads it back as `(dmx - 128) / 127`, so the
-readout in its Live Monitor matches the Chataigne value to within one DMX step
-(0.100 → 141 → 10%; 0.200 → 153 → 19%).
+Negative values **mirror the clip** on that axis — normal behaviour, not a fault.
+`Scale` therefore defaults to **0** (DMX 128, neutral), so a zone renders the clip
+as authored until something asks otherwise.
+
+Liberation reads the positive half back as roughly `(dmx - 128) / 127`, so its Live
+Monitor tracks the Chataigne value to within a DMX step or so (0.100 → 140 → 9%;
+0.200 → 153 → 19%).
 
 ## Clips — hiding Gobo Bank / Gobo Select
 
