@@ -21,8 +21,8 @@ Channel numbers below are offsets *within* the block.
 | 7 | Blue | 255 | `Colour` B | `round(b * 255)` |
 | 8 | Colour Blend | 255 | `Colour Blend` 0..1 | `round(v * 255)` — 0 = clip colour, 255 = desk RGB |
 | 9 | Zoom | 255 | `Zoom` 0..1 | `round(v * 255)` — 0 = collapsed, 255 = normal |
-| 10 | Scale X | 255 | `Scale.x` −1..1 | `round((v + 1) * 127.5)` → 0 / 128 / 255 |
-| 11 | Scale Y | 255 | `Scale.y` −1..1 | same |
+| 10 | Scale X | 255 | `Scale.x` 0..1 | `128 + round(v * 127)` → 128 / 255, see below |
+| 11 | Scale Y | 255 | `Scale.y` 0..1 | same |
 | 12 | Position X coarse | 128 | `Position.x` −1..1 | 16-bit, high byte |
 | 13 | Position X fine | 0 | `Position.x` | 16-bit, low byte |
 | 14 | Position Y coarse | 128 | `Position.y` −1..1 | 16-bit, high byte |
@@ -42,6 +42,12 @@ Channel numbers below are offsets *within* the block.
 Channels 17–32 are only transmitted for **Extended 32ch** zones; a Basic 16ch zone
 sends a 16-channel block and its FX/Tempo parameters are ignored.
 
+> **FX Parameter channels are ignored by Liberation** (18, 19, 21, 22, 24, 25, 27,
+> 28) as of Liberation 1.2.0 — a bug reported to the developer, not a mapping
+> error. Captured off the wire, Param 1 at 0 / 0.25 / 0.75 / 1.0 puts 0 / 64 / 191
+> / 255 on channel 18 and the per-slot stride of 3 is correct; Liberation just does
+> not act on them. The FX **Level** channels (17, 20, 23, 26) work normally.
+
 ## Position — 16-bit, both bytes native
 
 Liberation decodes the coarse/fine pair as one 16-bit value: `0 → -200`,
@@ -58,6 +64,22 @@ i.e. 65536 steps — the fine byte is always written, never left at 0.
 
 The `Position` parameter is deliberately **not** Y-flipped: it uses Liberation's
 own convention so what you send matches the doc.
+
+## Scale — top half of the channel only
+
+The profile doc calls ch 10/11 bipolar: `0 = -100%`, `128 = 0%`, `255 = +100%`.
+In practice Liberation only renders the **upper** half sanely — anything below 128
+produces broken geometry, not a mirrored or shrunken clip. So `Scale` is a plain
+**0..1** parameter and the channel never leaves 128..255:
+
+```
+scaleDMX = 128 + round(v * 127)        // v = 0..1  ->  128..255
+```
+
+`0 → 128` (0%, collapsed), `1 → 255` (100%, normal size — and Liberation's own
+recommended default). Liberation reads it back as `(dmx - 128) / 127`, so the
+readout in its Live Monitor matches the Chataigne value to within one DMX step
+(0.100 → 141 → 10%; 0.200 → 153 → 19%).
 
 ## Clips — hiding Gobo Bank / Gobo Select
 
@@ -110,8 +132,16 @@ letting a block cross channel 512.
 
 ## Refresh behaviour
 
-The script only writes values into the universe buffer. Chataigne's DMX module
-re-transmits every output universe on its own thread at **Send Rate** (40 Hz
-default), which is what keeps Liberation's 2-second staleness timer from expiring.
-No heartbeat logic exists in this module, and none is needed — but **Send On Change
-Only must stay off**, which is why the module hides it and defaults it to false.
+The script only writes values into the universe buffer. Two threads then keep the
+wire busy, which is what stops Liberation's 2-second staleness timer expiring:
+
+- the **module's** send thread hands every output universe to the device at the
+  module's **Send Rate**;
+- the **Art-Net device's** sender thread emits the packets at the device's own
+  **Send Rate**, a separate parameter under `Art-Net > Output`.
+
+Both default to 44 Hz — Chataigne's stock value for the device, and what this
+module sets its own to so the two stages run at the same rate.
+
+No heartbeat logic exists here, and none is needed — but **Send On Change Only must
+stay off**, which is why the module hides it and defaults it to false.

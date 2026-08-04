@@ -19,9 +19,11 @@
 // profile row == one consecutive block of channels in one universe.
 //
 // Nothing here polls or re-sends on a timer: the DMX module's own send thread
-// re-transmits every output universe at "Send Rate" (40 Hz by default), so the
-// channel values written here keep flowing and Liberation never sees the input
-// go stale (it disables a zone after 2 s without fresh data).
+// re-transmits every output universe at the module's "Send Rate", and the Art-Net
+// device re-sends on its own thread at its "Send Rate" (a separate parameter under
+// the device). Both are 44 Hz. So the channel values written here keep flowing and
+// Liberation never sees the input go stale (it disables a zone after 2 s without
+// fresh data).
 //
 // See CHANNEL_MAP.md for the channel table and the value conversions.
 
@@ -225,7 +227,7 @@ function ensureZone(zones, index) {
 	addFloat(z, "Colour Blend", "0 = the clip's own colour, 1 = the desk RGB colour above.", 1, 0, 1);
 	addFloat(z, "Zoom", "0 = collapsed, 1 = normal size.", 1, 0, 1);
 	addPoint2D(z, "Position", "-1..1 on each axis, (0,0) = centre. +X right, +Y DOWN (Liberation's convention). Sent 16-bit over the coarse + fine channel pairs.", 0, 0, -1, 1);
-	addPoint2D(z, "Scale", "-1 = -100%, 0 = 0%, 1 = +100% on each axis (DMX 0 / 128 / 255).", 1, 1, -1, 1);
+	addPoint2D(z, "Scale", "0 = 0% (collapsed), 1 = 100% (normal size) on each axis (DMX 128 / 255).", 1, 1, 0, 1);
 	addFloat(z, "Rotation", "Spin: -1 = max counter-clockwise, 0 = stopped, 1 = max clockwise.", 0, -1, 1);
 	addBool(z, "Tempo Override", "Extended 32ch only. Off = follow Liberation's tempo. On = drive this zone from Tempo BPM below.", false);
 	addFloat(z, "Tempo BPM", "Extended 32ch only. Only sent while Tempo Override is on. Coarse BPM plus a 1/256 fine part.", 120, 1, 255);
@@ -235,9 +237,9 @@ function ensureZone(zones, index) {
 		var isNewFX = findContainer(z, fxName) == null;
 		var fx = z.addContainer(fxName);
 		if (isNewFX) fx.setCollapsed(true);
-		addFloat(fx, "Level", "Extended 32ch only. Effect depth / amount for this slot.", 0, 0, 1);
-		addFloat(fx, "Param 1", "Extended 32ch only. First exposed parameter of this effect. 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
-		addFloat(fx, "Param 2", "Extended 32ch only. Second exposed parameter of this effect. 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
+		addFloat(fx, "Level", "Extended 32ch only. Effect depth / amount for this slot. At 0 the effect is not applied at all.", 0, 0, 1);
+		addFloat(fx, "Param 1", "Extended 32ch only. First exposed parameter of this effect. CURRENTLY IGNORED BY LIBERATION - the channel is sent correctly but has no effect (Liberation 1.2.0). 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
+		addFloat(fx, "Param 2", "Extended 32ch only. Second exposed parameter of this effect. CURRENTLY IGNORED BY LIBERATION - the channel is sent correctly but has no effect (Liberation 1.2.0). 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
 	}
 
 	return z;
@@ -450,8 +452,8 @@ function buildZoneBytes(z, size) {
 	b[CH_ZOOM - 1] = dmx8FromUnit(z.getChild("Zoom").get());
 
 	var scale = z.getChild("Scale").get();
-	b[CH_SCALE_X - 1] = dmx8FromBipolar(scale[0]);
-	b[CH_SCALE_Y - 1] = dmx8FromBipolar(scale[1]);
+	b[CH_SCALE_X - 1] = dmx8FromScale(scale[0]);
+	b[CH_SCALE_Y - 1] = dmx8FromScale(scale[1]);
 
 	// 16-bit position: 0 -> -200, 32768 -> centre, 65535 -> +200, +X right / +Y down
 	var pos = z.getChild("Position").get();
@@ -743,11 +745,14 @@ function addInt(cc, name, description, defaultValue, minValue, maxValue) {
 	return p;
 }
 
+// The range is script-defined, so it is re-applied on every init rather than only
+// on creation: a project saved before a range changed here picks the new one up on
+// load, and a saved value outside it gets clamped in. Re-applying an unchanged
+// range is a no-op.
 function addFloat(cc, name, description, defaultValue, minValue, maxValue) {
-	var isNew = !hasControllable(cc, name);
 	var p = cc.addFloatParameter(name, description, defaultValue, minValue, maxValue);
 	p.setAttribute("saveValueOnly", false);
-	if (isNew) p.setRange(minValue, maxValue);          // addFloatParameter casts its range to int
+	p.setRange(minValue, maxValue);                     // addFloatParameter casts its range to int
 	return p;
 }
 
@@ -761,10 +766,8 @@ function addPoint2D(cc, name, description, x, y, minValue, maxValue) {
 	var isNew = !hasControllable(cc, name);
 	var p = cc.addPoint2DParameter(name, description);
 	p.setAttribute("saveValueOnly", false);
-	if (isNew) {
-		p.setRange([minValue, minValue], [maxValue, maxValue]);
-		p.set(x, y);
-	}
+	p.setRange([minValue, minValue], [maxValue, maxValue]);
+	if (isNew) p.set(x, y);                             // only the range is script-owned; the value is the user's
 	return p;
 }
 
@@ -790,6 +793,11 @@ function addEnum(cc, name, description, keys, datas, preferredKey) {
 function dmx8FromUnit(v) { return clampInt(Math.round(v * 255), 0, 255); }               // 0..1   -> 0..255
 function dmx8FromBipolar(v) { return clampInt(Math.round((v + 1) * 127.5), 0, 255); }    // -1..1  -> 0/128/255
 function dmx16FromBipolar(v) { return clampInt(Math.round((v + 1) * 32767.5), 0, 65535); } // -1..1 -> 0/32768/65535
+
+// Scale is the top half of a bipolar channel only. Liberation's profile doc calls
+// ch 10/11 bipolar (0 = -100%, 128 = 0%, 255 = +100%), but values below 128 render
+// as garbage in Liberation, so the parameter is 0..1 and never leaves 128..255.
+function dmx8FromScale(v) { return clampInt(128 + Math.round(v * 127), 128, 255); }      // 0..1   -> 128..255
 
 function clampInt(v, mn, mx) { return toInt(Math.max(mn, Math.min(mx, v))); }
 

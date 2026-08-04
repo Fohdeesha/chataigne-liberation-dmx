@@ -1,5 +1,21 @@
 # Liberation DMX — Chataigne module
 
+> ### ⚠️ Known Liberation bug — FX parameters do nothing
+>
+> **FX Param 1 and Param 2 are ignored by Liberation's DMX Input** (confirmed on
+> Liberation 1.2.0, reported to the developer). Changing the same parameter from
+> Liberation's own FX panel visibly changes the beam; driving it over DMX does
+> nothing at all.
+>
+> This is not a module fault — capturing the Art-Net stream shows the parameter
+> channels carrying exactly the right values (Param 1 at 0 / 0.25 / 0.75 / 1.0
+> puts 0 / 64 / 191 / 255 on channel 18, and the per-slot stride is correct).
+> Liberation simply does not act on them.
+>
+> **FX Level works normally** — at 0 the effect is not applied, raise it and the
+> effect renders. Only the two parameter channels per slot are affected. The
+> parameters are left in place so they start working the day Liberation fixes it.
+
 Controls [Liberation](https://www.liberationlaser.com) through its **DMX Input**
 system (Art-Net or sACN) instead of MIDI. Up to **8 zones**, each one mapped to a
 single Liberation DMX Input profile row.
@@ -62,9 +78,16 @@ Arm and Intensity every time.
 With the defaults, `Select Clip` on its own is enough to put light in the air — and
 `Clear Clip` is a real blackout again.
 
-The module presets the DMX side for you: **DMX Type = Art-Net**, Send Rate 40 Hz,
+The module presets the DMX side for you: **DMX Type = Art-Net**, Send Rate 44 Hz,
 Send On Change Only off. Set **Remote Host** (under the ArtNet device parameters)
 if Liberation is on another machine — it defaults to `127.0.0.1`.
+
+Note there are *two* Send Rate parameters, which is Chataigne's design, not this
+module's: the **module's** (how often the universe buffers are handed to the
+device) and the **Art-Net device's**, under `Art-Net > Output` (how often packets
+actually leave). The device's stock default is 44 Hz — the DMX512 frame ceiling —
+so this module sets its own to 44 as well rather than leaving the two at different
+rates. Either way both are far inside Liberation's 2-second staleness window.
 
 ## Per-zone parameters
 
@@ -84,10 +107,10 @@ whole block immediately.
 | Colour Blend | 0..1 | 0 = clip's own colour, 1 = desk RGB. |
 | Zoom | 0..1 | 0 = collapsed, 1 = normal size. |
 | Position | Point2D −1..1 | (0,0) = centre, **+X right, +Y down**. 16-bit. |
-| Scale | Point2D −1..1 | −1 = −100%, 0 = 0%, 1 = +100%. |
+| Scale | Point2D 0..1 | 0 = 0% (collapsed), 1 = 100% (normal size). |
 | Rotation | −1..1 | Spin: −1 = max CCW, 0 = stopped, 1 = max CW. |
 | Tempo Override / Tempo BPM | bool + 1..255 | Extended profile only. Off = follow Liberation's tempo. |
-| FX 1–4 > Level, Param 1, Param 2 | 0..1 | Extended profile only. |
+| FX 1–4 > Level, Param 1, Param 2 | 0..1 | Extended profile only. Param 1 / Param 2 are currently ignored by Liberation — see the warning at the top. |
 
 Because these are module *parameters*, they are also reachable over
 OSC/OSCQuery, savable with the project, and editable by hand from the module panel.
@@ -101,7 +124,7 @@ marked below with `*` is the one a Mapping feeds.
 - **Clip** — Select Clip (Page + Clip), Set Page, Set Clip, Clear Clip
 - **Colour** — Set Colour `*` (a colour mapping feeds RGBA directly), Set Colour Blend `*`
 - **Transform** — Set Position `*` (2D mapping → X/Y), Set Position X `*`, Set Position Y `*`, Set Scale `*`, Set Scale X `*`, Set Scale Y `*`, Set Zoom `*`, Set Rotation `*`
-- **Effects** — Set FX Level `*`, Set FX Parameter `*`, Clear Effects
+- **Effects** — Set FX Level `*`, Set FX Parameter `*` (ignored by Liberation, see the warning at the top), Clear Effects
 - **Tempo** — Set Tempo Override `*` (BPM; also switches the override on), Clear Tempo Override
 - **Global** — Set Master Intensity `*` (grand master across all zones)
 
@@ -141,11 +164,17 @@ Universe 1 = Art-Net Port-Address 0 = Chataigne net 0 / subnet 0 / universe 0.
 aren't transmitted. The parameters stay in the tree so switching profiles doesn't
 lose their values.
 
-**Scale semantics are Liberation's, and they are odd**: the DMX doc defines
-0 → −100%, 128 → 0%, 255 → +100%, while also recommending 255 as the default. This
-module passes that through literally (`−1 / 0 / +1`), defaulting to `+1`. If the
-zone looks wrong-sized out of the box, try Scale `0` and tell me which one is
-actually "normal" so the default can be corrected.
+**Scale only uses half its channel.** The DMX doc defines ch 10/11 as bipolar
+(0 → −100%, 128 → 0%, 255 → +100%) while recommending 255 as the default, but
+Liberation only renders the upper half correctly — below 128 you get broken
+geometry rather than a mirrored clip. So `Scale` is a plain **0..1** parameter
+mapped onto 128..255, defaulting to `1` (255 = normal size). Liberation's Live
+Monitor reads it back as the same percentage.
+
+**FX Param 1 / Param 2 currently do nothing** — see the warning at the top. The
+channels are transmitted correctly; Liberation ignores them. **FX Level** is
+unaffected and works as documented: it is the effect *amount*, and it defaults to
+0, so nothing renders from a slot until you raise it.
 
 **FX parameter neutral value** is 0.5 (DMX 128), per the profile's recommended
 defaults.
