@@ -18,12 +18,19 @@
 // out of Chataigne's DMX module. One Chataigne zone == one Liberation DMX Input
 // profile row == one consecutive block of channels in one universe.
 //
-// Nothing here polls or re-sends on a timer: the DMX module's own send thread
-// re-transmits every output universe at the module's "Send Rate", and the Art-Net
-// device re-sends on its own thread at its "Send Rate" (a separate parameter under
-// the device). Both are 44 Hz. So the channel values written here keep flowing and
-// Liberation never sees the input go stale (it disables a zone after 2 s without
-// fresh data).
+// Nothing here polls or re-sends on a timer. The DMX module's own send thread hands
+// every output universe to the device at the module's "Send Rate", and the device's
+// sender thread emits whatever it was handed at its own "Send Rate" (a separate
+// parameter under the device). Both are 44 Hz. So the channel values written here keep
+// flowing and Liberation never sees the input go stale (it disables a zone after 2 s
+// without fresh data).
+//
+// That same continuous re-send is why channels have to be actively released: a zone
+// that is deleted, shrunk or re-addressed would otherwise keep streaming its last
+// values - including Arm 255 - with nothing left in the UI to turn it off. Every block
+// this script writes is remembered in sentBlocks, and vacated channels are zeroed.
+// (Turning the module off, deleting it or closing the project needs no such handling:
+// the send thread stops, so Liberation disarms the zone on its own 2 s timeout.)
 //
 // See CHANNEL_MAP.md for the channel table and the value conversions.
 
@@ -81,6 +88,19 @@ var suspendUpdates = false;        // guards against re-entry while the script w
 var PAGE_KEYS = [];                // index = bank (0-based)
 var CLIP_KEYS = [];                // index = slot (0 = no clip)
 var warnedMissingZones = [];       // zone numbers already warned about, cleared on rebuild
+var warnedAddressing = [];         // addressing warnings already logged, cleared on rebuild
+
+// The channels each zone currently owns on the wire: sentBlocks[zone] is either null or
+// [universe, startChannel, size], recorded when a block is actually sent. Anything the
+// zone stops covering has to be zeroed, or the DMX module keeps re-sending it forever.
+// Filled here rather than in init() so it is never read short: a parameter restored
+// while a project loads can reach the send path before init() has run.
+var sentBlocks = [];
+for (var zi = 0; zi <= MAX_ZONES; zi++) sentBlocks.push(null);
+
+var BLOCK_UNIVERSE = 0;
+var BLOCK_START = 1;
+var BLOCK_SIZE = 2;
 
 // sendUniverse() silently does nothing when the module holds no matching Output
 // Universe, and that is exactly the state right after a project loads: this script's
@@ -134,6 +154,7 @@ function moduleParameterChanged(param) {
 		// block size or placement changed - re-stack everything, then re-send all zones
 		applyAddressing();
 		pushAllZones();
+		validateAddressing();
 		return;
 	}
 
@@ -148,6 +169,7 @@ function setupParameterChanged(name) {
 	} else if (name == "Auto Address" || name == "Base Universe" || name == "Base Address") {
 		applyAddressing();
 		pushAllZones();
+		validateAddressing();
 	} else if (name == "Rebuild Zones") {
 		rebuildZones();
 	} else if (name == "Log Addressing") {
@@ -190,6 +212,7 @@ function goboValueForSlot(slot) {
 function rebuildZones() {
 	suspendUpdates = true;
 	warnedMissingZones = [];
+	warnedAddressing = [];
 
 	var zones = getZonesContainer();
 	if (zones == null) zones = local.parameters.addContainer("Zones");
@@ -295,6 +318,10 @@ function applyAddressing() {
 	var universe = clampInt(toInt(getSetupValue("Base Universe", 1)), 1, 4096);
 	var address = clampInt(toInt(getSetupValue("Base Address", 1)), 1, 512);
 
+	// Placement is about to change, so the "every universe we target exists" shortcut is
+	// no longer earned - make the next push re-check and defer again if it has to.
+	universesVerified = false;
+
 	suspendUpdates = true;
 
 	for (var i = 1; i <= MAX_ZONES; i++) {
@@ -324,9 +351,17 @@ function applyAddressing() {
 	suspendUpdates = false;
 }
 
+// Called on every addressing change, so each distinct problem is logged once and then
+// stays quiet - otherwise dragging a Start Address spinner would fill the log. Rebuild
+// Zones and Log Addressing clear the list, so a real re-check always reports again.
+function warnAddressing(key, message) {
+	if (warnedAddressing.indexOf(key) >= 0) return;
+	warnedAddressing.push(key);
+	script.logWarning(message);
+}
+
 function validateAddressing() {
 	var used = [];                                  // "universe:channel" strings already claimed
-	var missingUniverses = [];
 
 	for (var i = 1; i <= MAX_ZONES; i++) {
 		var z = getZoneContainer(i);
@@ -337,26 +372,26 @@ function validateAddressing() {
 		var start = toInt(z.getChild("Start Address").get());
 
 		if (start + size - 1 > 512) {
-			script.logWarning("Zone " + toInt(i) + " needs channels " + toInt(start) + "-" + toInt(start + size - 1) + " but a universe only has 512. Lower its Start Address or move it to another universe.");
+			warnAddressing("overflow:" + toInt(i), "Zone " + toInt(i) + " needs channels " + toInt(start) + "-" + toInt(start + size - 1) + " but a universe only has 512. Lower its Start Address or move it to another universe.");
 		}
 
 		for (var c = start; c < start + size && c <= 512; c++) {
 			var key = toInt(universe) + ":" + toInt(c);
 			if (used.indexOf(key) >= 0) {
-				script.logWarning("Zone " + toInt(i) + " overlaps another zone at universe " + toInt(universe) + ", channel " + toInt(c) + ". Liberation will see both zones fighting over the same channels.");
+				warnAddressing("overlap:" + toInt(i), "Zone " + toInt(i) + " overlaps another zone at universe " + toInt(universe) + ", channel " + toInt(c) + ". Liberation will see both zones fighting over the same channels.");
 				break;
 			}
 			used.push(key);
 		}
 
-		if (!outputUniverseExists(universe) && missingUniverses.indexOf(universe) < 0) {
-			missingUniverses.push(universe);
-			script.logWarning("Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
+		if (!outputUniverseExists(universe)) {
+			warnAddressing("universe:" + toInt(universe), "Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
 		}
 	}
 }
 
 function logAddressing() {
+	warnedAddressing = [];                          // this button is the re-check - always report
 	script.log("--- Liberation DMX addressing (set these in Liberation's DMX Input window) ---");
 	var any = false;
 	for (var i = 1; i <= MAX_ZONES; i++) {
@@ -404,28 +439,77 @@ function outputUniverseExists(universe) {
 // Encoding + sending
 // ============================================================
 function pushAllZones() {
+	if (suspendUpdates) return;                      // the caller that suspended will push
+
 	pendingFullPush = false;
-	for (var i = 1; i <= MAX_ZONES; i++) pushZone(i);
-	universesVerified = !pendingFullPush;
+
+	// Release before writing, never interleaved: a zone that shifted down must not be
+	// blanked by the neighbour vacating the channels it has just moved into.
+	for (var i = 1; i <= MAX_ZONES; i++) if (blockChanged(i)) clearZoneBlock(i);
+
+	var sent = 0;
+	for (var j = 1; j <= MAX_ZONES; j++) if (pushZone(j)) sent++;
+
+	// Earned only by a push that actually reached a universe, with nothing left deferred.
+	if (sent > 0 && !pendingFullPush) universesVerified = true;
 }
 
-function pushZone(index) {
-	if (suspendUpdates) return;
-
+// The block pushZone() would write for this zone right now, or null if it would write
+// nothing. Returned as [universe, startChannel, size].
+function plannedBlock(index) {
 	var z = getZoneContainer(index);
-	if (z == null) return;
+	if (z == null) return null;
 
 	var size = zoneProfileSize(z);
 	var start = clampInt(toInt(z.getChild("Start Address").get()), 1, 512);
-	if (start + size - 1 > 512) return;              // already warned in validateAddressing()
+	if (start + size - 1 > 512) return null;         // already warned in validateAddressing()
 
-	var universe = toInt(z.getChild("Universe").get());
+	return [toInt(z.getChild("Universe").get()), start, size];
+}
+
+// Is anything this zone currently holds on the wire about to stop being covered by it?
+function blockChanged(index) {
+	var prev = sentBlocks[index];
+	if (prev == null) return false;
+
+	var next = plannedBlock(index);
+	if (next == null) return true;                   // zone deleted, or no longer sendable
+	return prev[BLOCK_UNIVERSE] != next[BLOCK_UNIVERSE] || prev[BLOCK_START] != next[BLOCK_START] || prev[BLOCK_SIZE] != next[BLOCK_SIZE];
+}
+
+// Zero every channel the zone last claimed. This is what actually disarms Liberation
+// when a zone is deleted or moved: Arm sits on the block's first channel, so a block of
+// zeros is a disarm, and the module keeps re-sending it from then on.
+function clearZoneBlock(index) {
+	var b = sentBlocks[index];
+	if (b == null) return;
+	sentBlocks[index] = null;
+
+	var zeros = [];
+	for (var i = 0; i < b[BLOCK_SIZE]; i++) zeros.push(0);
+
+	var universe = b[BLOCK_UNIVERSE];
+	local.sendUniverse(universeNet(universe), universeSubnet(universe), universeUniverse(universe), b[BLOCK_START], zeros);
+}
+
+function pushZone(index) {
+	if (suspendUpdates) return false;
+
+	var z = getZoneContainer(index);
+	if (z == null) return false;
+
+	var b = plannedBlock(index);
+	if (b == null) return false;
+
+	var universe = b[BLOCK_UNIVERSE];
 	if (!universesVerified && !outputUniverseExists(universe)) {
 		pendingFullPush = true;                      // retried from moduleParameterChanged
-		return;
+		return false;
 	}
 
-	local.sendUniverse(universeNet(universe), universeSubnet(universe), universeUniverse(universe), start, buildZoneBytes(z, size));
+	local.sendUniverse(universeNet(universe), universeSubnet(universe), universeUniverse(universe), b[BLOCK_START], buildZoneBytes(z, b[BLOCK_SIZE]));
+	sentBlocks[index] = b;
+	return true;
 }
 
 function buildZoneBytes(z, size) {

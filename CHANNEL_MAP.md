@@ -126,7 +126,13 @@ universe = (portAddress     ) & 0x0F
 
 So Liberation universe **1** = Art-Net Port-Address **0** = Chataigne
 net 0 / subnet 0 / universe 0, which is the output universe a fresh DMX module
-already has. sACN numbering starts at 1 and lines up with the UI number directly.
+already has. The 1–4096 range is the whole of what this reaches: Chataigne's
+per-universe `Net` field stops at 15, and 4096 lands exactly on net 15.
+
+This split is **Art-Net-specific**, which is why the module is Art-Net only. Under
+sACN Chataigne matches universes on the raw 1-based universe number with net and
+subnet unused, so the same zone would resolve to a universe that does not exist and
+nothing would be transmitted.
 
 Auto Address stacks zones by profile size and starts a new universe rather than
 letting a block cross channel 512.
@@ -138,11 +144,33 @@ wire busy, which is what stops Liberation's 2-second staleness timer expiring:
 
 - the **module's** send thread hands every output universe to the device at the
   module's **Send Rate**;
-- the **Art-Net device's** sender thread emits the packets at the device's own
-  **Send Rate**, a separate parameter under `Art-Net > Output`.
+- the **Art-Net device's** sender thread flushes whatever it was handed since the last
+  tick, at the device's own **Send Rate**, a separate parameter under `Art-Net > Output`.
 
 Both default to 44 Hz — Chataigne's stock value for the device, and what this
 module sets its own to so the two stages run at the same rate.
 
 No heartbeat logic exists here, and none is needed — but **Send On Change Only must
-stay off**, which is why the module hides it and defaults it to false.
+stay off**, which is why the module hides it and defaults it to false. The device is a
+queue drain, not a repeater: with that option on, a universe whose channels have
+settled stops being handed over, so nothing is emitted and Liberation goes stale.
+
+## Releasing channels
+
+The flip side of a universe that is re-sent forever is that channels have to be given
+back explicitly. `Arm` is the first channel of a block, so a block left behind is a
+zone left rendering. The script remembers the `[universe, start, size]` of every block
+it sends, and zeroes any block that stops being covered:
+
+- **Zone Count lowered** — the removed zones' blocks are zeroed.
+- **Extended → Basic** — ch 17–32 are zeroed as the block shrinks.
+- **Universe or Start Address changed** — the old block is zeroed before the new one is
+  written.
+
+All releases for a re-address happen *before* any block is written, so a zone that
+shifted down cannot be blanked by the neighbour vacating the channels it just moved
+into.
+
+Losing the module entirely — disabled, deleted, project closed — needs no release:
+Chataigne's send thread stops, so Liberation disarms the zone on its own 2-second
+staleness timeout.

@@ -17,7 +17,7 @@
 > parameters are left in place so they start working the day Liberation fixes it.
 
 Controls [Liberation](https://www.liberationlaser.com) through its **DMX Input**
-system (Art-Net or sACN) instead of MIDI. Up to **8 zones**, each one mapped to a
+system over **Art-Net**, instead of MIDI. Up to **8 zones**, each one mapped to a
 single Liberation DMX Input profile row.
 
 Liberation's raw DMX quirks are hidden: clips are picked from **Page + Clip
@@ -34,8 +34,10 @@ Input drives a *separate render pass* per zone, with its own transforms. See
 - `module.json` — module definition (setup parameters + commands)
 - `liberationDMX.js` — builds the zone tree, encodes channels, sends DMX
 - `CHANNEL_MAP.md` — channel table, value conversions, clip-slot maths
+- `README.md` — this file
 - `icon.png` — 32×32 module icon
 - `LICENSE` — GNU GPL v3
+- `.gitignore` — keeps Chataigne working files out of the repo
 
 ## Install
 
@@ -83,9 +85,9 @@ Send On Change Only off. Set **Remote Host** (under the ArtNet device parameters
 if Liberation is on another machine — it defaults to `127.0.0.1`.
 
 Note there are *two* Send Rate parameters, which is Chataigne's design, not this
-module's: the **module's** (how often the universe buffers are handed to the
-device) and the **Art-Net device's**, under `Art-Net > Output` (how often packets
-actually leave). The device's stock default is 44 Hz — the DMX512 frame ceiling —
+module's: the **module's** (how often the universe buffers are handed to the device)
+and the **Art-Net device's**, under `Art-Net > Output` (how often the device flushes
+what it was handed). The device's stock default is 44 Hz — the DMX512 frame ceiling —
 so this module sets its own to 44 as well rather than leaving the two at different
 rates. Either way both are far inside Liberation's 2-second staleness window.
 
@@ -139,9 +141,20 @@ silent rig is almost always Arm off or Clip = None — which is what **Arm Follo
 Clip** and **Intensity Follows Clip** above exist to take care of.
 
 **Staleness is handled for you.** Liberation drops a zone after 2 s without fresh
-data; Chataigne's DMX module re-sends every output universe continuously at Send
-Rate. Don't switch **Send On Change Only** on (it is hidden and defaulted off for
-exactly this reason).
+data; Chataigne's DMX module hands every output universe to the device continuously at
+Send Rate. Don't switch **Send On Change Only** on (it is hidden and defaulted off for
+exactly this reason) — the device only emits what the module hands it, so with that
+option on a settled universe stops being sent at all and Liberation goes stale.
+
+**Turning things off disarms the laser.** Because the universe is re-sent
+continuously, a zone that simply disappeared from the module would otherwise keep
+streaming its last state — including `Arm` at 255 — with nothing left in the UI to
+switch it off. So the channels a zone owned are actively blanked when it goes away:
+lowering **Zone Count**, switching a zone from Extended to Basic (releasing ch 17–32),
+and re-addressing a zone to a different universe or start address all zero the
+channels being vacated before anything else is written. Turning the **module** off,
+deleting it, or closing the project needs no such handling — output stops entirely and
+Liberation disarms the zone on its own 2-second timeout.
 
 **After loading a project, the first push happens on the first change.** A module
 script's `init()` runs when Chataigne *creates* the module — before a saved project
@@ -158,7 +171,14 @@ so single-universe setups work untouched. If a zone points somewhere else, the l
 says exactly which universe to add. Hit **Rebuild Zones** after adding it.
 
 **Universe numbering.** Zone `Universe` is Liberation's 1-based UI number.
-Universe 1 = Art-Net Port-Address 0 = Chataigne net 0 / subnet 0 / universe 0.
+Universe 1 = Art-Net Port-Address 0 = Chataigne net 0 / subnet 0 / universe 0. The
+1–4096 range is exactly what Art-Net addressing reaches through Chataigne, whose
+per-universe `Net` field stops at 15.
+
+**Art-Net only.** Liberation's DMX Input also speaks sACN, but this module does not:
+it addresses universes the Art-Net way, as net / subnet / universe. Leave **DMX Type**
+on `Art-Net` — pointing the module at an sACN device makes it target universes that do
+not match the ones Chataigne would send, and nothing goes out.
 
 **Basic 16ch zones** ignore the FX and Tempo parameters — those channels simply
 aren't transmitted. The parameters stay in the tree so switching profiles doesn't
