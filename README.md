@@ -18,7 +18,8 @@ Input drives a *separate render pass* per zone, with its own transforms. See
 - `module.json` — module definition (setup parameters + commands)
 - `liberationDMX.js` — builds the zone tree, encodes channels, sends DMX
 - `CHANNEL_MAP.md` — channel table, value conversions, clip-slot maths
-- `icon.png` — optional 32×32 icon (not included)
+- `icon.png` — 32×32 module icon
+- `LICENSE` — GNU GPL v3
 
 ## Install
 
@@ -131,3 +132,18 @@ Everything on the wire is plain Art-Net, so any Art-Net monitor (or a second
 Chataigne DMX module with input enabled on port 6454) will show the block. Arm a
 zone, watch channel 1 go to 255, pick a clip and watch the Gobo Select channel
 land in the middle of that slot's band.
+
+## License
+
+Released under the **GNU General Public License v3** — see `LICENSE`.
+
+`icon.png` is Liberation's own logo mark, used to identify the software this
+module talks to. It remains the property of its owners and is not covered by the
+GPL grant above.
+
+## More information
+
+- [Liberation — next gen laser software](https://www.liberationlaser.com)
+- [Liberation user manual](https://docs.liberationlaser.com)
+- [Chataigne](https://benjamin.kuperberg.fr/chataigne/en)
+- [Chataigne module documentation](https://benkuperberg.gitbook.io/chataigne-docs/modules/custom-modules/making-your-own-module)
