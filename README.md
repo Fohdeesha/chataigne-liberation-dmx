@@ -13,9 +13,11 @@ This is a companion to the MIDI-based Liberation module, not a replacement — D
 Input drives a *separate render pass* per zone, with its own transforms. See
 `CHANNEL_MAP.md` for the wire-level detail.
 
-Written against **Liberation 1.2.1**, which is where the FX parameter channels
-started working and where the Scale channels began to be applied to the render.
-Older builds accept everything here, they just ignore those channels.
+Written against **Liberation 1.2.1 Build 96**, which is where the FX parameter
+channels started working and where the Scale channels began to be applied to the
+render. ⚠️ **The build number matters** — 1.2.1 shipped as a long run of builds and
+**Build 95 and older still have both bugs**. Those builds accept everything here,
+they just ignore those channels.
 
 ## Files
 
@@ -181,7 +183,7 @@ values are the same sizes mirrored on that axis — Liberation working as intend
 a glitch.
 
 ⚠️ **Upgrading from 1.4.0 or earlier:** `Scale` used to default to 0, on the reading
-that "128 = 0%" meant "no change". Liberation 1.2.1 applies the channel for real, so
+that "128 = 0%" meant "no change". Liberation 1.2.1 Build 96 applies the channel for real, so
 any zone saved with Scale 0 now renders nothing — set it to 1. The module logs a
 warning naming any zone it finds sitting at 0 on both axes.
 
