@@ -2,7 +2,7 @@
 	"name": "Liberation DMX",
 	"type": "DMX",
 	"path": "Software",
-	"version": "1.4.0",
+	"version": "1.5.0",
 	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind Page + Clip dropdowns; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
 	"url": "https://github.com/Fohdeesha/chataigne-liberation-dmx",
 	"downloadURL": "https://github.com/Fohdeesha/chataigne-liberation-dmx/archive/refs/heads/master.zip",
@@ -268,7 +268,7 @@
 			"parameters":
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"Scale": { "type": "Point2D", "min": [-1, -1], "max": [1, 1], "default": [0, 0], "mappingIndex": 0, "description": "-1 = -100% (mirrors the clip on that axis), 0 = 0% neutral, 1 = +100% (DMX 0 / 128 / 255)." }
+				"Scale": { "type": "Point2D", "min": [-1, -1], "max": [1, 1], "default": [1, 1], "mappingIndex": 0, "description": "Size on each axis: 1 = 100%, the clip as authored (DMX 255). 0 = 0%, nothing renders (DMX 128). -1 = 100% mirrored on that axis (DMX 0)." }
 			}
 		},
 		"Set Scale X":
@@ -278,7 +278,7 @@
 			"parameters":
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"Value": { "type": "Float", "min": -1, "max": 1, "default": 0, "mappingIndex": 0, "description": "-1 = -100% (mirrored), 0 = 0% neutral, 1 = +100%." }
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 1, "mappingIndex": 0, "description": "1 = 100%, the clip as authored. 0 = 0%, nothing renders. -1 = 100% mirrored on this axis." }
 			}
 		},
 		"Set Scale Y":
@@ -288,7 +288,7 @@
 			"parameters":
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"Value": { "type": "Float", "min": -1, "max": 1, "default": 0, "mappingIndex": 0, "description": "-1 = -100% (mirrored), 0 = 0% neutral, 1 = +100%." }
+				"Value": { "type": "Float", "min": -1, "max": 1, "default": 1, "mappingIndex": 0, "description": "1 = 100%, the clip as authored. 0 = 0%, nothing renders. -1 = 100% mirrored on this axis." }
 			}
 		},
 		"Set Zoom":
@@ -331,8 +331,8 @@
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones. Extended 32ch profile only." },
 				"FX": { "type": "Integer", "min": 1, "max": 4, "default": 1, "description": "Effect slot 1-4." },
-				"Parameter": { "type": "Integer", "min": 1, "max": 2, "default": 1, "description": "Which of the effect's first two exposed parameters to set. CURRENTLY IGNORED BY LIBERATION - the channel is sent correctly but has no effect (Liberation 1.2.0)." },
-				"Value": { "type": "Float", "min": 0, "max": 1, "default": 0.5, "mappingIndex": 0, "description": "0-1 mapped to 0-255. 0.5 is the recommended neutral value (DMX 128). Note: Liberation currently ignores the FX parameter channels." }
+				"Parameter": { "type": "Integer", "min": 1, "max": 2, "default": 1, "description": "Which of the effect's first two exposed parameters to set." },
+				"Value": { "type": "Float", "min": 0, "max": 1, "default": 0.5, "mappingIndex": 0, "description": "0-1 mapped to 0-255. 0.5 is the recommended neutral value (DMX 128)." }
 			}
 		},
 		"Clear Effects":

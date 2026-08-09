@@ -250,7 +250,7 @@ function ensureZone(zones, index) {
 	addFloat(z, "Colour Blend", "0 = the clip's own colour, 1 = the desk RGB colour above.", 1, 0, 1);
 	addFloat(z, "Zoom", "0 = collapsed, 1 = normal size.", 1, 0, 1);
 	addPoint2D(z, "Position", "-1..1 on each axis, (0,0) = centre. +X right, +Y DOWN (Liberation's convention). Sent 16-bit over the coarse + fine channel pairs.", 0, 0, -1, 1);
-	addPoint2D(z, "Scale", "-1 = -100% (mirrors the clip on that axis), 0 = 0% neutral, 1 = +100% (DMX 0 / 128 / 255).", 0, 0, -1, 1);
+	addPoint2D(z, "Scale", "Size on each axis: 1 = 100%, the clip as authored (DMX 255). 0 = 0%, nothing renders (DMX 128). -1 = 100% mirrored on that axis (DMX 0).", 1, 1, -1, 1);
 	addFloat(z, "Rotation", "Spin: -1 = max counter-clockwise, 0 = stopped, 1 = max clockwise.", 0, -1, 1);
 	addBool(z, "Tempo Override", "Extended 32ch only. Off = follow Liberation's tempo. On = drive this zone from Tempo BPM below.", false);
 	addFloat(z, "Tempo BPM", "Extended 32ch only. Only sent while Tempo Override is on. Coarse BPM plus a 1/256 fine part.", 120, 1, 255);
@@ -261,8 +261,8 @@ function ensureZone(zones, index) {
 		var fx = z.addContainer(fxName);
 		if (isNewFX) fx.setCollapsed(true);
 		addFloat(fx, "Level", "Extended 32ch only. Effect depth / amount for this slot. At 0 the effect is not applied at all.", 0, 0, 1);
-		addFloat(fx, "Param 1", "Extended 32ch only. First exposed parameter of this effect. CURRENTLY IGNORED BY LIBERATION - the channel is sent correctly but has no effect (Liberation 1.2.0). 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
-		addFloat(fx, "Param 2", "Extended 32ch only. Second exposed parameter of this effect. CURRENTLY IGNORED BY LIBERATION - the channel is sent correctly but has no effect (Liberation 1.2.0). 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
+		addFloat(fx, "Param 1", "Extended 32ch only. First exposed parameter of this effect. 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
+		addFloat(fx, "Param 2", "Extended 32ch only. Second exposed parameter of this effect. 0.5 is the recommended neutral value (DMX 128).", 0.5, 0, 1);
 	}
 
 	return z;
@@ -386,6 +386,13 @@ function validateAddressing() {
 
 		if (!outputUniverseExists(universe)) {
 			warnAddressing("universe:" + toInt(universe), "Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
+		}
+
+		// Scale 0 on both axes is DMX 128, which Liberation renders as 0% - armed but invisible.
+		// Catches projects saved before 1.5.0, when 0 was this module's (wrong) neutral default.
+		var scale = z.getChild("Scale").get();
+		if (scale[0] == 0 && scale[1] == 0) {
+			warnAddressing("scalezero:" + toInt(i), "Zone " + toInt(i) + " has Scale at 0 on both axes, which Liberation renders as 0% size - the zone will arm but stay invisible. Set Scale to 1 for the clip at its authored size.");
 		}
 	}
 }
@@ -601,7 +608,7 @@ function cmdResetZone(zone) {
 		z.getChild("Colour Blend").set(1);
 		z.getChild("Zoom").set(1);
 		z.getChild("Position").set(0, 0);
-		z.getChild("Scale").set(0, 0);
+		z.getChild("Scale").set(1, 1);
 		z.getChild("Rotation").set(0);
 		z.getChild("Tempo Override").set(false);
 		z.getChild("Tempo BPM").set(120);

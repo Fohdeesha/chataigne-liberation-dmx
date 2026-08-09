@@ -1,21 +1,5 @@
 # Liberation DMX — Chataigne module
 
-> ### ⚠️ Known Liberation bug — FX parameters do nothing
->
-> **FX Param 1 and Param 2 are ignored by Liberation's DMX Input** (confirmed on
-> Liberation 1.2.0, reported to the developer). Changing the same parameter from
-> Liberation's own FX panel visibly changes the beam; driving it over DMX does
-> nothing at all.
->
-> This is not a module fault — capturing the Art-Net stream shows the parameter
-> channels carrying exactly the right values (Param 1 at 0 / 0.25 / 0.75 / 1.0
-> puts 0 / 64 / 191 / 255 on channel 18, and the per-slot stride is correct).
-> Liberation simply does not act on them.
->
-> **FX Level works normally** — at 0 the effect is not applied, raise it and the
-> effect renders. Only the two parameter channels per slot are affected. The
-> parameters are left in place so they start working the day Liberation fixes it.
-
 Controls [Liberation](https://www.liberationlaser.com) through its **DMX Input**
 system over **Art-Net**, instead of MIDI. Up to **8 zones**, each one mapped to a
 single Liberation DMX Input profile row.
@@ -28,6 +12,10 @@ channel addressing is assigned automatically.
 This is a companion to the MIDI-based Liberation module, not a replacement — DMX
 Input drives a *separate render pass* per zone, with its own transforms. See
 `CHANNEL_MAP.md` for the wire-level detail.
+
+Written against **Liberation 1.2.1**, which is where the FX parameter channels
+started working and where the Scale channels began to be applied to the render.
+Older builds accept everything here, they just ignore those channels.
 
 ## Files
 
@@ -109,10 +97,10 @@ whole block immediately.
 | Colour Blend | 0..1 | 0 = clip's own colour, 1 = desk RGB. |
 | Zoom | 0..1 | 0 = collapsed, 1 = normal size. |
 | Position | Point2D −1..1 | (0,0) = centre, **+X right, +Y down**. 16-bit. |
-| Scale | Point2D −1..1 | −1 = −100% (mirrors the clip on that axis), 0 = 0% neutral (default), 1 = +100%. |
+| Scale | Point2D −1..1 | Size per axis: 1 = the clip as authored (default), 0 = collapsed to nothing, −1 = full size mirrored on that axis. |
 | Rotation | −1..1 | Spin: −1 = max CCW, 0 = stopped, 1 = max CW. |
 | Tempo Override / Tempo BPM | bool + 1..255 | Extended profile only. Off = follow Liberation's tempo. |
-| FX 1–4 > Level, Param 1, Param 2 | 0..1 | Extended profile only. Param 1 / Param 2 are currently ignored by Liberation — see the warning at the top. |
+| FX 1–4 > Level, Param 1, Param 2 | 0..1 | Extended profile only. Level is the effect amount; the two parameters are the effect's own exposed controls. |
 
 Because these are module *parameters*, they are also reachable over
 OSC/OSCQuery, savable with the project, and editable by hand from the module panel.
@@ -126,7 +114,7 @@ marked below with `*` is the one a Mapping feeds.
 - **Clip** — Select Clip (Page + Clip), Set Page, Set Clip, Clear Clip
 - **Colour** — Set Colour `*` (a colour mapping feeds RGBA directly), Set Colour Blend `*`
 - **Transform** — Set Position `*` (2D mapping → X/Y), Set Position X `*`, Set Position Y `*`, Set Scale `*`, Set Scale X `*`, Set Scale Y `*`, Set Zoom `*`, Set Rotation `*`
-- **Effects** — Set FX Level `*`, Set FX Parameter `*` (ignored by Liberation, see the warning at the top), Clear Effects
+- **Effects** — Set FX Level `*`, Set FX Parameter `*`, Clear Effects
 - **Tempo** — Set Tempo Override `*` (BPM; also switches the override on), Clear Tempo Override
 - **Global** — Set Master Intensity `*` (grand master across all zones)
 
@@ -184,19 +172,22 @@ not match the ones Chataigne would send, and nothing goes out.
 aren't transmitted. The parameters stay in the tree so switching profiles doesn't
 lose their values.
 
-**Scale is bipolar and negatives mirror.** Ch 10/11 run −100% / 0% / +100% across
-DMX 0 / 128 / 255, so `Scale` is a −1..1 Point2D passed straight through. Negative
-values mirror the clip on that axis — that is Liberation working as intended, not a
-glitch. The parameter defaults to **0** (DMX 128, neutral), so a fresh zone renders
-the clip as authored.
+**Scale is a size, not an offset — and 0 renders nothing.** Ch 10/11 run
+−100% / 0% / +100% across DMX 0 / 128 / 255, which Liberation applies literally: at
+DMX 128 the clip is scaled to *zero size* and the zone stays invisible even though it
+is armed and streaming. Full size is DMX **255**, which is why the profile's own
+default for those channels is 255 and why `Scale` defaults to **1** here. Negative
+values are the same sizes mirrored on that axis — Liberation working as intended, not
+a glitch.
 
-**FX Param 1 / Param 2 currently do nothing** — see the warning at the top. The
-channels are transmitted correctly; Liberation ignores them. **FX Level** is
-unaffected and works as documented: it is the effect *amount*, and it defaults to
-0, so nothing renders from a slot until you raise it.
+⚠️ **Upgrading from 1.4.0 or earlier:** `Scale` used to default to 0, on the reading
+that "128 = 0%" meant "no change". Liberation 1.2.1 applies the channel for real, so
+any zone saved with Scale 0 now renders nothing — set it to 1. The module logs a
+warning naming any zone it finds sitting at 0 on both axes.
 
-**FX parameter neutral value** is 0.5 (DMX 128), per the profile's recommended
-defaults.
+**FX Level is the effect amount** and defaults to 0, so a slot does nothing until
+you raise it. **Param 1 / Param 2** are that effect's own exposed controls; their
+neutral value is 0.5 (DMX 128), per the profile's recommended defaults.
 
 ## Verifying without a laser
 

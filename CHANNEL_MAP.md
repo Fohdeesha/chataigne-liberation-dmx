@@ -42,12 +42,6 @@ Channel numbers below are offsets *within* the block.
 Channels 17–32 are only transmitted for **Extended 32ch** zones; a Basic 16ch zone
 sends a 16-channel block and its FX/Tempo parameters are ignored.
 
-> **FX Parameter channels are ignored by Liberation** (18, 19, 21, 22, 24, 25, 27,
-> 28) as of Liberation 1.2.0 — a bug reported to the developer, not a mapping
-> error. Captured off the wire, Param 1 at 0 / 0.25 / 0.75 / 1.0 puts 0 / 64 / 191
-> / 255 on channel 18 and the per-slot stride of 3 is correct; Liberation just does
-> not act on them. The FX **Level** channels (17, 20, 23, 26) work normally.
-
 ## Position — 16-bit, both bytes native
 
 Liberation decodes the coarse/fine pair as one 16-bit value: `0 → -200`,
@@ -65,7 +59,7 @@ i.e. 65536 steps — the fine byte is always written, never left at 0.
 The `Position` parameter is deliberately **not** Y-flipped: it uses Liberation's
 own convention so what you send matches the doc.
 
-## Scale — bipolar, negatives mirror
+## Scale — bipolar size, negatives mirror
 
 Ch 10/11 are bipolar exactly as the profile doc describes: `0 = -100%`,
 `128 = 0%`, `255 = +100%`, and the parameter passes that through directly:
@@ -74,13 +68,24 @@ Ch 10/11 are bipolar exactly as the profile doc describes: `0 = -100%`,
 scaleDMX = round((v + 1) * 127.5)      // v = -1..1  ->  0 / 128 / 255
 ```
 
-Negative values **mirror the clip** on that axis — normal behaviour, not a fault.
-`Scale` therefore defaults to **0** (DMX 128, neutral), so a zone renders the clip
-as authored until something asks otherwise.
+Those percentages are a **size**, not a delta. Liberation decodes the channel as
+roughly `(dmx - 128) / 127` and scales the clip by it, so DMX 255 is the clip at its
+authored size, DMX 128 collapses it to nothing, and DMX 0 is full size mirrored on
+that axis. That is why the profile's default for both channels is **255** — the same
+"leave it alone" role that 128 plays for Position coarse and Rotation — and why
+`Scale` defaults to **1** here.
 
-Liberation reads the positive half back as roughly `(dmx - 128) / 127`, so its Live
-Monitor tracks the Chataigne value to within a DMX step or so (0.100 → 140 → 9%;
-0.200 → 153 → 19%).
+Negative values mirror the clip rather than shrinking past nothing: -1 is the same
+size as +1, flipped.
+
+Verified against Liberation 1.2.1: 1.0 → 255 → Live Monitor `Sc: 100%` and the clip
+at authored size; 0.5 → 191 → `Sc: 49%` and visibly half; 0 → 128 → nothing on the
+canvas; -1 → 0 → full size, flipped on both axes.
+
+Liberation 1.2.0 decoded the channel into the same Live Monitor percentages but never
+applied it to the render, so a zone drew at authored size whatever the value was.
+Anything built against that behaviour — including this module before 1.5.0, which
+defaulted `Scale` to 0 — now renders nothing until Scale is raised to 1.
 
 ## Clips — hiding Gobo Bank / Gobo Select
 
