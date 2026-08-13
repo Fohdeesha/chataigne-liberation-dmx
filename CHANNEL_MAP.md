@@ -14,8 +14,8 @@ Channel numbers below are offsets *within* the block.
 |---|---|---|---|---|
 | 1 | Arm | 0 | `Arm` (+ `Enabled`) | `Enabled && Arm ? 255 : 0`. Liberation enables output at 250–255. |
 | 2 | Intensity | 255 | `Intensity` 0..1 | `round(v * 255)` |
-| 3 | Gobo Bank | 0 | `Page` enum (or `Clip X`) | page index 0–31 sent directly |
-| 4 | Gobo Select | 0 | `Clip` enum (or `Clip X`/`Clip Y`) | slot → mid-band value, see below |
+| 3 | Gobo Bank | 0 | `Clip` (or `Clip X`) | `floor(x / 8)` — derived, see below |
+| 4 | Gobo Select | 0 | `Clip` (or `Clip X`/`Clip Y`) | slot → mid-band value, see below |
 | 5 | Red | 255 | `Colour` R | `round(r * 255)` |
 | 6 | Green | 255 | `Colour` G | `round(g * 255)` |
 | 7 | Blue | 255 | `Colour` B | `round(b * 255)` |
@@ -110,26 +110,30 @@ prints. Right-click a clip and its settings header reads **CLIP SETTINGS 21 1**:
 the same pair Liberation's own project file stores per clip, so it is stable and
 unambiguous, which is why the module works in it:
 
-- every `Clip` option is named `x-y`, rebuilt whenever the page moves because `x` depends
-  on the bank. The label is deliberately terse: an enum answers to its option text over
-  OSC, so the label is also the wire format, and `21-1` is typeable by hand;
-- `Clip X` / `Clip Y` take the pair typed directly and drive `Page` + `Clip` from it,
-  page included, which is the page-independent way in.
+- the `Clip` enum is one flat list of the whole deck, each option named `x-y`. The label
+  is deliberately terse: an enum answers to its option text over OSC, so the label is
+  also the wire format, and `21-1` is typeable by hand;
+- `Clip X` / `Clip Y` take the pair typed directly and drive `Clip` from it.
+
+**Pages are not a control.** An option's index is the clip number, and the bank/slot pair
+the two channels want falls out of it, so the split happens once, in `buildZoneBytes`:
 
 ```
-x = bank * 8 + (col - 1)          bank = floor(x / 8)
-y = row - 1                       slot = (x % 8) * 5 + y + 1
+index n  ->  x = floor((n - 1) / 5)        bank = floor(x / 8)
+             y = (n - 1) % 5               slot = (x % 8) * 5 + y + 1
 ```
 
-`Clip X` / `Clip Y` are a view of `Page` + `Clip`, not a third source of truth: only the
-dropdowns reach the wire, and the pair is written back from them on every selection.
-`-1` on either is *no clip*, which is how the pair reaches Gobo Select 0 — though a
-figure typed into one while the other still reads `-1` brings that other one back to 0
-instead of blanking the zone, so a cleared zone can be typed straight back onto the deck.
+Index 0 is *no clip* and sends bank 0 / select 0, Liberation's blackout.
 
-Gobo Bank is a plain 0–255 channel, so the 32 pages the module offers (deck columns
-0–255) are a UI choice rather than a limit. It was 8 through module 1.5.0, which put
-columns 64 and up out of reach — Liberation's own factory project is 89 columns wide.
+`Clip X` / `Clip Y` are a view of `Clip`, not a second source of truth: only the enum
+reaches the wire, and the pair is written back from it on every selection. `-1` on either
+is *no clip* — though a figure typed into one while the other still reads `-1` brings
+that other one back to 0 instead of blanking the zone, so a cleared zone can be typed
+straight back onto the deck.
+
+`Setup > Deck Columns` sizes the list; it is a UI bound, not a protocol one. Gobo Bank is
+a plain 0–255 channel, so the deck could in principle run to 2048 columns. The default of
+96 clears Liberation's own factory project, which is 89 columns wide.
 
 Going the other way (what this module does), each slot owns a band of ~6.375 DMX
 steps, so it aims at the **middle** of the band. Rounding to a band edge would land

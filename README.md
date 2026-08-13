@@ -4,11 +4,10 @@ Chataigne module that drives [Liberation](https://www.liberationlaser.com) laser
 software over Art-Net using its **DMX Input** system. Up to **8 zones**, each one
 mapped to a Liberation DMX Input profile row (Basic 16ch or Extended 32ch).
 
-You never deal with the raw DMX. Clips are picked from **Page + Clip** dropdowns
-instead of Gobo Bank / Gobo Select values — labelled with Liberation's own clip
-numbers, or typed straight in — position is a normalized `-1..1` Point2D written to
-the 16-bit coarse/fine channel pairs, and channel addressing is handled for you. See
-[CHANNEL_MAP.md](CHANNEL_MAP.md) for the wire-level detail.
+You never deal with the raw DMX. Clips are picked by **Liberation's own clip number**
+rather than Gobo Bank / Gobo Select values, position is a normalized `-1..1` Point2D
+written to the 16-bit coarse/fine channel pairs, and channel addressing is handled for
+you. See [CHANNEL_MAP.md](CHANNEL_MAP.md) for the wire-level detail.
 
 Written against **Liberation 1.2.1 Build 96**. ⚠️ The build number matters:
 **1.2.1 Build 95 and older** accept the FX Param and Scale channels but ignore them.
@@ -31,9 +30,9 @@ prints exactly what to enter here.
 ## Using it
 
 Set **Zone Count**, then drive each `Zones > Zone N` container: Arm, Intensity,
-Page + Clip, Colour, Position, Scale, Rotation, Zoom, plus FX and Tempo on the
-Extended profile. All of it is also exposed as Commands for Mappings and Sequences
-(the **Zone** parameter accepts **0** for all zones) and over OSC/OSCQuery.
+Clip, Colour, Position, Scale, Rotation, Zoom, plus FX and Tempo on the Extended
+profile. All of it is also exposed as Commands for Mappings and Sequences (the
+**Zone** parameter accepts **0** for all zones) and over OSC/OSCQuery.
 
 ### Finding a clip
 
@@ -41,15 +40,19 @@ Right-click any clip in Liberation and its settings header reads **CLIP SETTINGS
 the clip's position on the deck, `x` counting columns across every page and `y` the row,
 both from 0. The module speaks the same numbers, so there is nothing to convert:
 
-- the **Clip** dropdown lists the selected page's clips by that number, `21-1`, so the
-  list is read in the same figures Liberation shows;
-- **Clip X** and **Clip Y** take the pair typed straight in and move Page + Clip to
-  match — including the page, so you never have to work out which page a number is on.
-  `-1` means no clip. The **Select Clip Number** command does the same from a Mapping or
-  Sequence.
+- the **Clip** dropdown lists the whole deck by that number, `21-1`, so it is read in the
+  same figures Liberation shows;
+- **Clip X** and **Clip Y** take the pair typed straight in. `-1` means no clip. The
+  **Select Clip Number** command does the same from a Mapping or Sequence.
 
-Pick a clip from the dropdowns and Clip X / Clip Y follow — the two are always the same
-selection seen two ways. Page N holds deck columns `(N-1)*8` to `(N-1)*8+7`.
+Pick from the dropdown and Clip X / Clip Y follow — the two are always the same selection
+seen two ways.
+
+There is no page or bank to choose. Liberation's DMX Input addresses clips as a page plus
+a slot within it, but both fall out of the clip number, so the module works them out on
+the way to the wire. Set **Setup > Deck Columns** to roughly how wide your deck is and
+the Clip list covers it; the default of 96 clears Liberation's own 89-column factory
+project.
 
 With the default options, selecting a clip is enough to put light in the air.
 **Arm Follows Clip** and **Intensity Follows Clip** arm the zone and raise its
@@ -67,18 +70,15 @@ Universe and Start Address per zone by hand.
 - A zone renders only when its profile row is active, Arm is on, a clip is
   selected and Intensity is above zero. A silent rig is almost always Arm off or
   Clip = None.
-- The Page dropdown offers **32 pages**, i.e. deck columns 0–255. Module 1.5.0 and
-  earlier stopped at 8 pages, which left everything from column 64 on unreachable —
-  Liberation's own factory project is 89 columns wide. `Page 1`…`Page 32` are unchanged
-  as OSC values; pages 9 and up are simply new.
-- ⚠️ **The `Clip` option strings changed in 1.6.0.** A Chataigne enum answers to its
-  option text over OSC, so anything selecting a clip by name — an OSC message, an
-  OSCQuery write, a Mapping or Sequence storing a literal — now needs `21-1` where it
-  used to say `Col 6 - Row 2`. Saved zone selections are *not* affected: the module
-  restores an enum by what the option points at, not by its label.
-  The `Clip` list also only ever holds the **selected page's** clips, so `21-1` is
-  rejected while the zone sits on page 1. Drive `Clip X` / `Clip Y` instead — plain
-  numbers, and they move the page for you.
+- ⚠️ **Upgrading from 1.6.0 or earlier**: the `Page` parameter is gone, and with it the
+  `Set Page`, `Select Clip` and `Set Clip` commands — any Mapping or Sequence using those
+  three has to be rebuilt around **Select Clip Number**. Saved zones migrate themselves:
+  the old page and slot are folded into the clip number on load, so every zone comes back
+  on the clip it was on.
+- ⚠️ A Chataigne enum answers to its **option text** over OSC, so anything selecting a
+  clip by name needs `21-1`. That string is now valid whatever state the zone is in,
+  which it was not in 1.6.0. `Clip X` / `Clip Y` remain the easier OSC target — plain
+  integers.
 - Scale 0 renders nothing. Scale is a size, not an offset: `1` is the clip as
   authored (the default), `0` collapses it to nothing, `-1` mirrors it.
   ⚠️ If you're upgrading from module 1.4.0 or earlier: `Scale` used to default

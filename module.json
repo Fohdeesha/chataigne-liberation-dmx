@@ -2,8 +2,8 @@
 	"name": "Liberation DMX",
 	"type": "DMX",
 	"path": "Software",
-	"version": "1.6.0",
-	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind Page + Clip dropdowns listed by Liberation's own clip numbers, or typed straight in as a Clip X / Clip Y pair; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
+	"version": "1.7.0",
+	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind a single Clip dropdown listing the whole deck by Liberation's own clip numbers, or typed straight in as a Clip X / Clip Y pair; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
 	"url": "https://github.com/Fohdeesha/chataigne-liberation-dmx",
 	"downloadURL": "https://github.com/Fohdeesha/chataigne-liberation-dmx/archive/refs/heads/master.zip",
 
@@ -47,6 +47,14 @@
 					"Basic 16ch": 16
 				},
 				"description": "Profile given to zones as they are created. Each zone's own Profile parameter can be changed afterwards."
+			},
+			"Deck Columns":
+			{
+				"type": "Integer",
+				"min": 1,
+				"max": 2048,
+				"default": 96,
+				"description": "How wide your Liberation clip deck is, in columns. Only sizes each zone's Clip list, so keep it just past the rightmost column you use. Liberation's own factory project is 89 columns wide. Lowering it past a zone's current clip clears that zone's clip."
 			},
 			"Auto Address":
 			{
@@ -169,17 +177,6 @@
 			}
 		},
 
-		"Select Clip":
-		{
-			"menu": "Clip",
-			"callback": "cmdSelectClip",
-			"parameters":
-			{
-				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"Page": { "type": "Enum", "options": { "Page 1": 0, "Page 2": 1, "Page 3": 2, "Page 4": 3, "Page 5": 4, "Page 6": 5, "Page 7": 6, "Page 8": 7, "Page 9": 8, "Page 10": 9, "Page 11": 10, "Page 12": 11, "Page 13": 12, "Page 14": 13, "Page 15": 14, "Page 16": 15, "Page 17": 16, "Page 18": 17, "Page 19": 18, "Page 20": 19, "Page 21": 20, "Page 22": 21, "Page 23": 22, "Page 24": 23, "Page 25": 24, "Page 26": 25, "Page 27": 26, "Page 28": 27, "Page 29": 28, "Page 30": 29, "Page 31": 30, "Page 32": 31 }, "description": "Clip deck page. Sent on the Gobo Bank channel. Page N covers deck columns (N-1)*8 to (N-1)*8+7." },
-				"Clip": { "type": "Enum", "options": { "None (no clip)": 0, "Col 1 - Row 1": 1, "Col 1 - Row 2": 2, "Col 1 - Row 3": 3, "Col 1 - Row 4": 4, "Col 1 - Row 5": 5, "Col 2 - Row 1": 6, "Col 2 - Row 2": 7, "Col 2 - Row 3": 8, "Col 2 - Row 4": 9, "Col 2 - Row 5": 10, "Col 3 - Row 1": 11, "Col 3 - Row 2": 12, "Col 3 - Row 3": 13, "Col 3 - Row 4": 14, "Col 3 - Row 5": 15, "Col 4 - Row 1": 16, "Col 4 - Row 2": 17, "Col 4 - Row 3": 18, "Col 4 - Row 4": 19, "Col 4 - Row 5": 20, "Col 5 - Row 1": 21, "Col 5 - Row 2": 22, "Col 5 - Row 3": 23, "Col 5 - Row 4": 24, "Col 5 - Row 5": 25, "Col 6 - Row 1": 26, "Col 6 - Row 2": 27, "Col 6 - Row 3": 28, "Col 6 - Row 4": 29, "Col 6 - Row 5": 30, "Col 7 - Row 1": 31, "Col 7 - Row 2": 32, "Col 7 - Row 3": 33, "Col 7 - Row 4": 34, "Col 7 - Row 5": 35, "Col 8 - Row 1": 36, "Col 8 - Row 2": 37, "Col 8 - Row 3": 38, "Col 8 - Row 4": 39, "Col 8 - Row 5": 40 }, "description": "Slot on the selected page, in the deck's own fill order (down a column, then across). Sent on the Gobo Select channel. Column here is 1-8 within the page - to work in Liberation's own clip numbers instead, use Select Clip Number." }
-			}
-		},
 		"Select Clip Number":
 		{
 			"menu": "Clip",
@@ -187,28 +184,8 @@
 			"parameters":
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"X": { "type": "Integer", "min": -1, "max": 255, "default": 0, "description": "First figure of Liberation's clip number: deck column counted across every page, 0 = leftmost. Right-click a clip in Liberation and its settings header prints the pair. -1 = no clip." },
+				"X": { "type": "Integer", "min": -1, "max": 2047, "default": 0, "description": "First figure of Liberation's clip number: deck column, 0 = leftmost. Right-click a clip in Liberation and its settings header prints the pair. Clamped to Setup > Deck Columns. -1 = no clip." },
 				"Y": { "type": "Integer", "min": -1, "max": 4, "default": 0, "description": "Second figure of Liberation's clip number: deck row, 0 = top. -1 = no clip." }
-			}
-		},
-		"Set Page":
-		{
-			"menu": "Clip",
-			"callback": "cmdSetPage",
-			"parameters":
-			{
-				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"Page": { "type": "Enum", "options": { "Page 1": 0, "Page 2": 1, "Page 3": 2, "Page 4": 3, "Page 5": 4, "Page 6": 5, "Page 7": 6, "Page 8": 7, "Page 9": 8, "Page 10": 9, "Page 11": 10, "Page 12": 11, "Page 13": 12, "Page 14": 13, "Page 15": 14, "Page 16": 15, "Page 17": 16, "Page 18": 17, "Page 19": 18, "Page 20": 19, "Page 21": 20, "Page 22": 21, "Page 23": 22, "Page 24": 23, "Page 25": 24, "Page 26": 25, "Page 27": 26, "Page 28": 27, "Page 29": 28, "Page 30": 29, "Page 31": 30, "Page 32": 31 }, "description": "Clip deck page (Gobo Bank). The zone keeps its current slot. Page N covers deck columns (N-1)*8 to (N-1)*8+7." }
-			}
-		},
-		"Set Clip":
-		{
-			"menu": "Clip",
-			"callback": "cmdSetClip",
-			"parameters":
-			{
-				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"Clip": { "type": "Enum", "options": { "None (no clip)": 0, "Col 1 - Row 1": 1, "Col 1 - Row 2": 2, "Col 1 - Row 3": 3, "Col 1 - Row 4": 4, "Col 1 - Row 5": 5, "Col 2 - Row 1": 6, "Col 2 - Row 2": 7, "Col 2 - Row 3": 8, "Col 2 - Row 4": 9, "Col 2 - Row 5": 10, "Col 3 - Row 1": 11, "Col 3 - Row 2": 12, "Col 3 - Row 3": 13, "Col 3 - Row 4": 14, "Col 3 - Row 5": 15, "Col 4 - Row 1": 16, "Col 4 - Row 2": 17, "Col 4 - Row 3": 18, "Col 4 - Row 4": 19, "Col 4 - Row 5": 20, "Col 5 - Row 1": 21, "Col 5 - Row 2": 22, "Col 5 - Row 3": 23, "Col 5 - Row 4": 24, "Col 5 - Row 5": 25, "Col 6 - Row 1": 26, "Col 6 - Row 2": 27, "Col 6 - Row 3": 28, "Col 6 - Row 4": 29, "Col 6 - Row 5": 30, "Col 7 - Row 1": 31, "Col 7 - Row 2": 32, "Col 7 - Row 3": 33, "Col 7 - Row 4": 34, "Col 7 - Row 5": 35, "Col 8 - Row 1": 36, "Col 8 - Row 2": 37, "Col 8 - Row 3": 38, "Col 8 - Row 4": 39, "Col 8 - Row 5": 40 }, "description": "Slot on the zone's current page. Column here is 1-8 within the page - to work in Liberation's own clip numbers instead, use Select Clip Number. 'None' sends Gobo Select 0 = no clip / blackout." }
 			}
 		},
 		"Clear Clip":
