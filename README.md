@@ -16,7 +16,8 @@ Written against **Liberation 1.2.1 Build 96**. ⚠️ The build number matters:
 
 **Chataigne**: copy this folder into `Documents/Chataigne/modules/`, hit
 **File > Reload custom modules**, then add **Liberation DMX** from the module list
-(under *Software*). Here's the module panel with a zone armed and a clip selected:
+(under *Software*). Here's a zone armed on clip `21-1` — the **Clip** dropdown and the
+**Clip X** / **Clip Y** boxes are the same selection seen two ways:
 
 ![Liberation DMX module in Chataigne](docs/chataigne-module.png)
 
