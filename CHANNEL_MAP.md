@@ -106,8 +106,8 @@ place on the page is `Col C - Row R` with slot number `(C - 1) * 5 + R`.
 
 `gridX`/`gridY` are not an internal detail — they are the numbers Liberation itself
 prints. Right-click a clip and its settings header reads **CLIP SETTINGS 21 1**: the
-0-based `x y` the clip sits at, with `x` counting deck columns across every page. It is
-the same pair Liberation's own project file stores per clip, so it is stable and
+0-based `x y` the clip sits at, with `x` counting deck columns across the whole deck. It
+is the same pair Liberation's own project file stores per clip, so it is stable and
 unambiguous, which is why the module works in it:
 
 - the `Clip` enum is one flat list of the whole deck, each option named `x-y`. The label

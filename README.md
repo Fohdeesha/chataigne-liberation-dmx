@@ -38,8 +38,8 @@ profile. All of it is also exposed as Commands for Mappings and Sequences (the
 ### Finding a clip
 
 Right-click any clip in Liberation and its settings header reads **CLIP SETTINGS 21 1** —
-the clip's position on the deck, `x` counting columns across every page and `y` the row,
-both from 0. The module speaks the same numbers, so there is nothing to convert:
+the clip's position on the deck, `x` counting columns across the whole deck and `y` the
+row, both from 0. The module speaks the same numbers, so there is nothing to convert:
 
 - the **Clip** dropdown lists the whole deck by that number, `21-1`, so it is read in the
   same figures Liberation shows;
