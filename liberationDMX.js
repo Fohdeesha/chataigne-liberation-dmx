@@ -42,8 +42,16 @@ var MAX_ZONES = 8;
 var DECK_COLS = 8;                 // clip deck columns per page
 var DECK_ROWS = 5;                 // clip deck rows per page
 var SLOTS_PER_PAGE = 40;           // DECK_COLS * DECK_ROWS
-var NUM_PAGES = 8;
+var NUM_PAGES = 32;                // Gobo Bank is a plain 0-255 channel, so this is a UI choice, not a limit
 var NUM_FX = 4;
+
+// Liberation labels every clip with the 0-based (x, y) it occupies on the deck - the
+// pair its clip settings header prints as "CLIP SETTINGS 21 1". x counts deck columns
+// across every page, so it is the same grid the DMX map describes:
+//   x = bank * DECK_COLS + (col - 1),  y = row - 1
+var MAX_CLIP_X = NUM_PAGES * DECK_COLS - 1;
+var MAX_CLIP_Y = DECK_ROWS - 1;
+var CLIP_NUMBER_NONE = -1;         // an (x, y) pair has no way to say "no clip", so -1 does it
 
 // Enum option data is the value we actually work with: an Enum's get() returns its
 // DATA, not its key (EnumParameter::getValue -> getValueData), and command callbacks
@@ -86,7 +94,6 @@ var CLIP_NONE_KEY = "None (no clip)";
 var ready = false;                 // init() finished
 var suspendUpdates = false;        // guards against re-entry while the script writes parameters
 var PAGE_KEYS = [];                // index = bank (0-based)
-var CLIP_KEYS = [];                // index = slot (0 = no clip)
 var warnedMissingZones = [];       // zone numbers already warned about, cleared on rebuild
 var warnedAddressing = [];         // addressing warnings already logged, cleared on rebuild
 
@@ -158,7 +165,15 @@ function moduleParameterChanged(param) {
 		return;
 	}
 
-	if (name == "Clip") applyClipFollows(zoneIndex);
+	if (name == "Page") {
+		refreshClipOptions(zoneIndex);         // the clip numbers in the labels move with the page
+		syncClipNumber(zoneIndex);
+	} else if (name == "Clip") {
+		syncClipNumber(zoneIndex);
+		applyClipFollows(zoneIndex);
+	} else if (name == "Clip X" || name == "Clip Y") {
+		applyClipNumber(zoneIndex, name);
+	}
 
 	pushZone(zoneIndex);
 }
@@ -185,13 +200,28 @@ function setupParameterChanged(name) {
 //   gridX = bank * 8 + floor((n - 1) / 5),  gridY = (n - 1) % 5
 function buildLookupTables() {
 	PAGE_KEYS = [];
-	for (var p = 0; p < NUM_PAGES; p++) PAGE_KEYS.push("Page " + toInt(p + 1));
+	for (var p = 0; p < NUM_PAGES; p++) PAGE_KEYS.push(pageKey(p));
+}
 
-	CLIP_KEYS = [];
-	CLIP_KEYS.push(CLIP_NONE_KEY);                       // index 0 = no clip / blackout
+function pageKey(bank) {
+	return "Page " + toInt(bank + 1);
+}
+
+// A clip is labelled with Liberation's own number for it, so the list reads in the same
+// figures its clip settings header prints. The number depends on the page, so the list
+// is rebuilt whenever the page moves.
+// Kept short deliberately: an enum's key is also what it answers to over OSC, and "21-1"
+// is something you can type into a message by hand.
+function clipKeysForBank(bank) {
+	var keys = [CLIP_NONE_KEY];                          // index 0 = no clip / blackout
 	for (var c = 1; c <= DECK_COLS; c++) {
-		for (var r = 1; r <= DECK_ROWS; r++) CLIP_KEYS.push("Col " + toInt(c) + " - Row " + toInt(r));
+		for (var r = 1; r <= DECK_ROWS; r++) keys.push(clipKey(bank, c, r));
 	}
+	return keys;
+}
+
+function clipKey(bank, col, row) {
+	return toInt(bank * DECK_COLS + col - 1) + "-" + toInt(row - 1);
 }
 
 // The key arrays above are only used to label the dropdowns. Each option's data is
@@ -244,8 +274,11 @@ function ensureZone(zones, index) {
 	// --- live control ---
 	addBool(z, "Arm", "Arm channel. Liberation only renders this zone's DMX layer when Arm is at least 250, a clip is selected and Intensity is above zero.", false);
 	addFloat(z, "Intensity", "0-1 mapped to 0-100% brightness.", 1, 0, 1);
-	addEnum(z, "Page", "Clip deck page (Gobo Bank). Each page is one 8 x 5 deck of clips.", PAGE_KEYS, null, "");
-	addEnum(z, "Clip", "Clip slot on the selected page (Gobo Select). 'None' = no clip / blackout.", CLIP_KEYS, null, "");
+	addEnum(z, "Page", "Clip deck page (Gobo Bank). Each page is one 8 x 5 deck of clips, so page N covers deck columns (N-1)*8 to (N-1)*8+7.", PAGE_KEYS, null, "");
+	addEnum(z, "Clip", "Clip on the selected page (Gobo Select), listed by Liberation's own clip number: right-click a clip in Liberation and its settings header prints the same pair, as 'x y'. Options run down each column of the page in turn. 'None' = no clip / blackout.", clipKeysForBank(zoneBank(z)), null, "");
+	addInt(z, "Clip X", "First figure of Liberation's clip number: deck column counted across every page, 0 = leftmost. Type what Liberation shows and the Page + Clip dropdowns follow. -1 = no clip.", CLIP_NUMBER_NONE, CLIP_NUMBER_NONE, MAX_CLIP_X);
+	addInt(z, "Clip Y", "Second figure of Liberation's clip number: deck row, 0 = top. -1 = no clip.", CLIP_NUMBER_NONE, CLIP_NUMBER_NONE, MAX_CLIP_Y);
+	syncClipNumber(index);                 // the dropdowns are the source of truth, here and on load
 	addColor(z, "Colour", "Desk RGB colour. Alpha is ignored - use Intensity for brightness.", [1, 1, 1, 1]);
 	addFloat(z, "Colour Blend", "0 = the clip's own colour, 1 = the desk RGB colour above.", 1, 0, 1);
 	addFloat(z, "Zoom", "0 = collapsed, 1 = normal size.", 1, 0, 1);
@@ -276,6 +309,102 @@ function zoneProfileSize(z) {
 	var p = z.getChild("Profile");
 	if (p == null) return PROFILE_EXTENDED_SIZE;
 	return toInt(p.get()) == PROFILE_BASIC_SIZE ? PROFILE_BASIC_SIZE : PROFILE_EXTENDED_SIZE;
+}
+
+// ============================================================
+// Clip number (Liberation's "CLIP SETTINGS x y")
+// ============================================================
+// Clip X / Clip Y are a second, typeable view of the Page + Clip pair, in the numbering
+// Liberation prints on the clip itself. The dropdowns stay the source of truth: they are
+// what goes on the wire, and the pair is written back from them on every selection.
+
+function zoneBank(z) {
+	var p = z.getChild("Page");
+	if (p == null) return 0;
+	return clampInt(toInt(p.get()), 0, NUM_PAGES - 1);
+}
+
+// Relabel the Clip dropdown for the page the zone is now on. The selected slot survives
+// because setEnumOptions restores by data, not by the label text.
+function refreshClipOptions(index) {
+	var z = getZoneContainer(index);
+	if (z == null) return;
+
+	var clip = z.getChild("Clip");
+	if (clip == null) return;
+
+	var wasSuspended = suspendUpdates;
+	suspendUpdates = true;
+	setEnumOptions(clip, clipKeysForBank(zoneBank(z)), null, "");
+	suspendUpdates = wasSuspended;
+}
+
+// Page + Clip -> Clip X / Clip Y
+function syncClipNumber(index) {
+	var z = getZoneContainer(index);
+	if (z == null) return;
+
+	var cx = z.getChild("Clip X");
+	var cy = z.getChild("Clip Y");
+	if (cx == null || cy == null) return;
+
+	var slot = clampInt(toInt(z.getChild("Clip").get()), 0, SLOTS_PER_PAGE);
+
+	var wasSuspended = suspendUpdates;
+	suspendUpdates = true;
+
+	if (slot == 0) {
+		cx.set(CLIP_NUMBER_NONE);
+		cy.set(CLIP_NUMBER_NONE);
+	} else {
+		cx.set(clampInt(zoneBank(z) * DECK_COLS + toInt(Math.floor((slot - 1) / DECK_ROWS)), 0, MAX_CLIP_X));
+		cy.set(toInt((slot - 1) % DECK_ROWS));
+	}
+
+	suspendUpdates = wasSuspended;
+}
+
+// Clip X / Clip Y -> Page + Clip. 'changed' names the figure the user just typed, or is
+// "" when a command set the pair outright.
+function applyClipNumber(index, changed) {
+	var z = getZoneContainer(index);
+	if (z == null) return;
+
+	var cx = z.getChild("Clip X");
+	var cy = z.getChild("Clip Y");
+	if (cx == null || cy == null) return;
+
+	var x = toInt(cx.get());
+	var y = toInt(cy.get());
+
+	// -1 is no clip, but a typed figure only blanks the zone when the -1 is the figure
+	// that was typed. Otherwise a zone sitting at -1 / -1 could never be typed back onto
+	// the deck: the first figure entered would be stomped by the one still reading -1.
+	var none = x < 0 || y < 0;
+	if (changed == "Clip X") none = x < 0;
+	else if (changed == "Clip Y") none = y < 0;
+
+	var wasSuspended = suspendUpdates;
+	suspendUpdates = true;
+
+	if (none) {
+		cx.set(CLIP_NUMBER_NONE);
+		cy.set(CLIP_NUMBER_NONE);
+		z.getChild("Clip").setData(0);
+	} else {
+		if (x < 0) { x = 0; cx.set(0); }       // the figure not being typed comes back in
+		if (y < 0) { y = 0; cy.set(0); }
+
+		var bank = clampInt(toInt(Math.floor(x / DECK_COLS)), 0, NUM_PAGES - 1);
+		if (bank != zoneBank(z)) {
+			z.getChild("Page").setData(bank);
+			refreshClipOptions(index);
+		}
+		z.getChild("Clip").setData(toInt((x % DECK_COLS) * DECK_ROWS + y + 1));
+	}
+
+	applyClipFollows(index);                   // the Clip change path is suspended here
+	suspendUpdates = wasSuspended;
 }
 
 // ============================================================
@@ -604,6 +733,8 @@ function cmdResetZone(zone) {
 		z.getChild("Intensity").set(1);
 		z.getChild("Page").setData(0);
 		z.getChild("Clip").setData(0);
+		refreshClipOptions(idx[i]);
+		syncClipNumber(idx[i]);
 		z.getChild("Colour").set([1, 1, 1, 1]);
 		z.getChild("Colour Blend").set(1);
 		z.getChild("Zoom").set(1);
@@ -633,7 +764,24 @@ function cmdSelectClip(zone, page, clip) {
 		suspendUpdates = true;
 		z.getChild("Page").setData(toInt(page));
 		z.getChild("Clip").setData(toInt(clip));
-		applyClipFollows(idx[i]);            // the param-change path is suspended here, so do it explicitly
+		refreshClipOptions(idx[i]);          // the param-change path is suspended here, so do it explicitly
+		syncClipNumber(idx[i]);
+		applyClipFollows(idx[i]);
+		suspendUpdates = false;
+		pushZone(idx[i]);
+	}
+}
+
+// Straight from Liberation's clip settings header. Goes through the Clip X / Clip Y
+// parameters so the whole zone lands in the same state as typing the pair by hand.
+function cmdSelectClipNumber(zone, x, y) {
+	var idx = zoneIndices(zone);
+	for (var i = 0; i < idx.length; i++) {
+		var z = getZoneContainer(idx[i]);
+		suspendUpdates = true;
+		z.getChild("Clip X").set(clampInt(x, CLIP_NUMBER_NONE, MAX_CLIP_X));
+		z.getChild("Clip Y").set(clampInt(y, CLIP_NUMBER_NONE, MAX_CLIP_Y));
+		applyClipNumber(idx[i], "");           // both figures came from the command
 		suspendUpdates = false;
 		pushZone(idx[i]);
 	}
@@ -862,20 +1010,27 @@ function addPoint2D(cc, name, description, x, y, minValue, maxValue) {
 	return p;
 }
 
-// Options are rebuilt every time so the list always matches this script, while the
-// current selection is kept (clearing options resets the value to the first entry).
 function addEnum(cc, name, description, keys, datas, preferredKey) {
 	var p = cc.addEnumParameter(name, description);
 	p.setAttribute("saveValueOnly", false);
+	setEnumOptions(p, keys, datas, preferredKey);
+	return p;
+}
 
-	var current = p.getKey();
+// Options are rebuilt every time so the list always matches this script, while the
+// current selection is kept (clearing options resets the value to the first entry).
+// Restored by DATA, not by key: the label text is not stable - the Clip labels carry a
+// page-dependent clip number, and they changed shape in 1.6.0 - while the data behind an
+// option is exactly the thing being selected (the bank, the slot, the block size).
+function setEnumOptions(p, keys, datas, preferredKey) {
+	var hadValue = p.getKey() != "";
+	var current = p.get();
+
 	p.removeOptions();
 	for (var i = 0; i < keys.length; i++) p.addOption(keys[i], datas == null ? i : datas[i]);
 
-	if (keys.indexOf(current) >= 0) p.set(current);
+	if (hadValue) p.setData(current);
 	else if (preferredKey != "" && keys.indexOf(preferredKey) >= 0) p.set(preferredKey);
-
-	return p;
 }
 
 // ============================================================
