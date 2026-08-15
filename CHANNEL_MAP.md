@@ -78,16 +78,6 @@ that axis. That is why the profile's default for both channels is **255** — th
 Negative values mirror the clip rather than shrinking past nothing: -1 is the same
 size as +1, flipped.
 
-Verified against Liberation 1.2.1 Build 96: 1.0 → 255 → Live Monitor `Sc: 100%` and the clip
-at authored size; 0.5 → 191 → `Sc: 49%` and visibly half; 0 → 128 → nothing on the
-canvas; -1 → 0 → full size, flipped on both axes.
-
-Liberation 1.2.1 Build 95 and older decoded the channel into the same Live Monitor
-percentages but never applied it to the render, so a zone drew at authored size
-whatever the value was. Build 96 is the first that applies it.
-Anything built against that behaviour — including this module before 1.5.0, which
-defaulted `Scale` to 0 — now renders nothing until Scale is raised to 1.
-
 ## Clips — hiding Gobo Bank / Gobo Select
 
 Liberation treats the clip deck like a gobo wheel:
