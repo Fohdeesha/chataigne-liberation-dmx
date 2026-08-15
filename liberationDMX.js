@@ -268,9 +268,7 @@ function ensureZone(zones, index) {
 	// --- live control ---
 	addBool(z, "Arm", "Arm channel. Liberation only renders this zone's DMX layer when Arm is at least 250, a clip is selected and Intensity is above zero.", false);
 	addFloat(z, "Intensity", "0-1 mapped to 0-100% brightness.", 1, 0, 1);
-	var migrated = migrateLegacyPage(z);   // must run before the Clip options are rebuilt
 	addEnum(z, "Clip", "Every clip on the deck, named the way Liberation names it: right-click a clip in Liberation and its settings header prints the same 'x y' pair. 'None' = no clip / blackout.", clipKeys(), null, "");
-	if (migrated >= 0) z.getChild("Clip").setData(migrated);
 	addInt(z, "Clip X", "First figure of Liberation's clip number: deck column, 0 = leftmost. Type what Liberation shows and the Clip dropdown follows. -1 = no clip.", CLIP_NUMBER_NONE, CLIP_NUMBER_NONE, deckColumns() - 1);
 	addInt(z, "Clip Y", "Second figure of Liberation's clip number: deck row, 0 = top. -1 = no clip.", CLIP_NUMBER_NONE, CLIP_NUMBER_NONE, MAX_CLIP_Y);
 	syncClipNumber(index);                 // the Clip dropdown is the source of truth, here and on load
@@ -378,24 +376,6 @@ function applyClipNumber(index, changed) {
 
 	applyClipFollows(index);                   // the Clip change path is suspended here
 	suspendUpdates = wasSuspended;
-}
-
-// Zones saved before 1.7.0 carry a Page enum, and their Clip data is a slot within that
-// page rather than a whole-deck number. Fold the two together, then drop Page - it is
-// derived from the clip number now. Returns the clip index to restore, or -1 for a zone
-// that needs no migration.
-function migrateLegacyPage(z) {
-	if (findControllable(z, "Page") == null) return -1;
-
-	var slot = clampInt(toInt(containerValue(z, "Clip", 0)), 0, SLOTS_PER_PAGE);
-	var index = 0;
-	if (slot > 0) {
-		var bank = clampInt(toInt(containerValue(z, "Page", 0)), 0, MAX_BANKS - 1);
-		index = clipIndexFor(toInt(bank * DECK_COLS + Math.floor((slot - 1) / DECK_ROWS)), toInt((slot - 1) % DECK_ROWS));
-	}
-
-	z.removeParameter("Page");
-	return clampInt(index, 0, lastClipIndex());
 }
 
 // ============================================================
@@ -506,13 +486,6 @@ function validateAddressing() {
 
 		if (!outputUniverseExists(universe)) {
 			warnAddressing("universe:" + toInt(universe), "Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
-		}
-
-		// Scale 0 on both axes is DMX 128, which Liberation renders as 0% - armed but invisible.
-		// Catches projects saved before 1.5.0, when 0 was this module's (wrong) neutral default.
-		var scale = z.getChild("Scale").get();
-		if (scale[0] == 0 && scale[1] == 0) {
-			warnAddressing("scalezero:" + toInt(i), "Zone " + toInt(i) + " has Scale at 0 on both axes, which Liberation renders as 0% size - the zone will arm but stay invisible. Set Scale to 1 for the clip at its authored size.");
 		}
 	}
 }
@@ -966,10 +939,9 @@ function addInt(cc, name, description, defaultValue, minValue, maxValue) {
 	return p;
 }
 
-// The range is script-defined, so it is re-applied on every init rather than only
-// on creation: a project saved before a range changed here picks the new one up on
-// load, and a saved value outside it gets clamped in. Re-applying an unchanged
-// range is a no-op.
+// The range is script-defined, so it is re-applied on every init rather than only on
+// creation, keeping every saved parameter on the range this script defines - a saved
+// value outside it gets clamped in. Re-applying an unchanged range is a no-op.
 function addFloat(cc, name, description, defaultValue, minValue, maxValue) {
 	var p = cc.addFloatParameter(name, description, defaultValue, minValue, maxValue);
 	p.setAttribute("saveValueOnly", false);
@@ -1001,9 +973,9 @@ function addEnum(cc, name, description, keys, datas, preferredKey) {
 
 // Options are rebuilt every time so the list always matches this script, while the
 // current selection is kept (clearing options resets the value to the first entry).
-// Restored by DATA, not by key: the label text is not stable - the Clip labels have
-// changed shape twice - while the data behind an option is exactly the thing being
-// selected (the clip number, the block size).
+// Restored by DATA, not by key: the data behind an option is exactly the thing being
+// selected (the clip number, the block size), so the selection survives any change
+// to the label text.
 function setEnumOptions(p, keys, datas, preferredKey) {
 	var hadValue = p.getKey() != "";
 	var current = p.get();

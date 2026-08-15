@@ -2,7 +2,7 @@
 	"name": "Liberation DMX",
 	"type": "DMX",
 	"path": "Software",
-	"version": "1.7.0",
+	"version": "1.8.0",
 	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind a single Clip dropdown listing the whole deck by Liberation's own clip numbers, or typed straight in as a Clip X / Clip Y pair; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
 	"url": "https://github.com/Fohdeesha/chataigne-liberation-dmx",
 	"downloadURL": "https://github.com/Fohdeesha/chataigne-liberation-dmx/archive/refs/heads/master.zip",
