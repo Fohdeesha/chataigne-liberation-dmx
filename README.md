@@ -1,6 +1,6 @@
 # Liberation DMX for Chataigne
 
-Requires Liberation 1.2.1 Build 96 or higher, which may currently be a private beta.
+Requires Liberation 1.2.1 Build 96 or higher.
 
 Chataigne module that drives [Liberation](https://www.liberationlaser.com) laser
 software over Art-Net using its DMX Input system. Up to 8 zones, each one mapped to
