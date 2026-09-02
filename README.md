@@ -121,6 +121,8 @@ prints the same thing to the Logger panel.
 - You don't need a laser to verify anything: any Art-Net monitor on port 6454
   shows the block. Arm a zone and watch channel 1 go to 255
 
+**Author: [Jon Sands / Fohdeesha](https://github.com/Fohdeesha)**
+
 ## License
 
 GNU General Public License v3, see `LICENSE`. `icon.png` is Liberation's own logo
