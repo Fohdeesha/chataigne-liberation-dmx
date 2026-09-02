@@ -132,4 +132,4 @@ of its owners and is not covered by the GPL grant.
 ## Links
 
 - [Liberation](https://www.liberationlaser.com) and the [user manual](https://docs.liberationlaser.com)
-- [Chataigne](https://benjamin.kuperberg.fr/chataigne/en) and the [custom module docs](https://benkuperberg.gitbook.io/chataigne-docs/modules/custom-modules/making-your-own-module)
+- [Chataigne](https://benjamin.kuperberg.fr/chataigne/en) and the [custom module docs](https://benkuper.notion.site/Making-your-own-Module-f892f4150bc74dc1b851ba1a3c99510d)
