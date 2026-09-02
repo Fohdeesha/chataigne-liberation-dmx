@@ -29,9 +29,9 @@ for the wire-level detail.
 **Chataigne**: 
 - Download the latest release from the releases section to the right
 - extract the chataigne-liberation-dmx folder from the zip into your `Documents/Chataigne/modules/` folder
-- Restart Chataigne or use File > Reload custom modules
+- Restart Chataigne or use File > Reload Custom Modules
 - Add the module to your project, it's under Software > Liberation DMX
-- Set up your desired laser/zone count and start triggering clips via sequence mappings, triggers, osc, etc 
+- Set up your desired laser/zone count and start triggering clips via sequence mappings, triggers, OSC, etc 
 
 Here's a zone armed on clip `21-1`:
 
@@ -66,14 +66,11 @@ Select Clip has three modes:
 
 - **Clip number** - the X / Y pair above, typed straight in
 - **Clip list** - a dropdown of the whole deck by the same `x-y` names. The list is sized by
-  Setup > Deck Columns at the moment the consequence is created
-- **Stop clips** - clears whatever the zone is playing (and disarms it, see below), so nobody
-  has to know that `-1` / `-1` means "no clip"
+  Setup > Deck Columns
+- **Stop clips** - clears whatever the zone is playing (and disarms it, see below) 
 
-**Duration** works like the MIDI module's Full Note *On Time*: the clip goes on when the
-trigger fires and the module stops it again that many seconds later. `0` holds the clip until
-something else changes it. Selecting another clip on the same zone, Stop clips, Clear Clip or
-Reset Zone cancels a pending stop. The stop lands within 40 ms of its time.
+**Duration**: How long to play the clip before stopping it. 0 = forever. Selecting another clip on the same zone, Stop clips, Clear Clip or
+Reset Zone all kill the clip as well.
 
 With the default module configuration, selecting a clip like above is enough to put light in the air.
 The **Arm Follows Clip** and **Intensity Follows Clip** automatically arm the zone and raise its Intensity on
@@ -83,15 +80,17 @@ clip immediately enables laser output for that zone*. Switch both options off in
 want to drive Arm yourself. Master Intensity scales every zone on the way out without
 touching the per-zone values.
 
-Auto Address stacks zones automatically from Base Universe/Address, spilling into the
-next universe when a block would cross channel 512. Turn it off to set Universe and
-Start Address per zone by hand if you have modified the defaults in Liberation.
+## Universes / Addressing
+
+The Auto Address option (enabled by default) stacks zones automatically from Base Universe/Address, spilling into the
+next universe when a block would cross channel 512. This matches Liberation's DMX Input Settings behavior when adding profiles, so it typically shouldn't need to be modified. Turn it off to set Universe and
+Start Address per zone by hand if you've modified the defaults in Liberation.
 
 ## Extra Info
 
 - A zone/laser only outputs light if Arm is on, a clip is
   selected and Intensity is above zero. A silent rig is almost always Arm off or
-  Clip = None.
+  Clip = None
 - A Chataigne enum answers to its option text over OSC, so anything selecting a
   clip by name needs `21-1`. `Clip X` / `Clip Y` are the easier OSC target — plain
   integers
