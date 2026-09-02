@@ -25,6 +25,10 @@
 // flowing and Liberation never sees the input go stale (it disables a zone after 2 s
 // without fresh data).
 //
+// The one clock this script does keep is for Select Clip's Duration: update() counts
+// each zone's remaining seconds down and clears the clip when they run out. See
+// "Timed clips" below for why it is done that way.
+//
 // That same continuous re-send is why channels have to be actively released: a zone
 // that is deleted, shrunk or re-addressed would otherwise keep streaming its last
 // values - including Arm 255 - with nothing left in the UI to turn it off. Every block
@@ -55,6 +59,15 @@ var MAX_CLIP_X = MAX_DECK_COLUMNS - 1;
 var MAX_CLIP_Y = DECK_ROWS - 1;
 var DEFAULT_DECK_COLUMNS = 96;     // Liberation's own factory deck is 89 columns wide
 var CLIP_NUMBER_NONE = -1;         // an (x, y) pair has no way to say "no clip", so -1 does it
+
+// Select Clip's Mode enum, by option data (module.json "Select Clip" > "Mode"). Anything
+// else ("number") is the Clip X / Clip Y pair.
+var SELECT_MODE_LIST = "list";
+var SELECT_MODE_STOP = "stop";
+
+// How often update() looks at the clip countdowns. 25 Hz puts a stop within 40 ms of its
+// time, under the 44 Hz DMX send period, and keeps the update thread mostly idle.
+var CLIP_STOP_UPDATE_RATE = 25;
 
 // Enum option data is the value we actually work with: an Enum's get() returns its
 // DATA, not its key (EnumParameter::getValue -> getValueData), and command callbacks
@@ -107,6 +120,11 @@ var warnedAddressing = [];         // addressing warnings already logged, cleare
 var sentBlocks = [];
 for (var zi = 0; zi <= MAX_ZONES; zi++) sentBlocks.push(null);
 
+// Seconds left before each zone's clip is cleared again (Select Clip with a Duration).
+// 0 = nothing pending. Written by the commands on their thread, counted down by update().
+var clipStopIn = [];
+for (var ci = 0; ci <= MAX_ZONES; ci++) clipStopIn.push(0);
+
 var BLOCK_UNIVERSE = 0;
 var BLOCK_START = 1;
 var BLOCK_SIZE = 2;
@@ -126,6 +144,7 @@ var universesVerified = false;     // once true, the lookup stays out of the hot
 // ============================================================
 function init() {
 	suspendUpdates = false;                // recover if a previous run died mid-update
+	script.setUpdateRate(CLIP_STOP_UPDATE_RATE);
 	rebuildZones();
 	ready = true;
 	script.log("Liberation DMX ready - " + toInt(getSetupValue("Zone Count", 0)) + " zone(s). Use 'Log Addressing' to print the channel map for Liberation's DMX Input window.");
@@ -167,9 +186,11 @@ function moduleParameterChanged(param) {
 	}
 
 	if (name == "Clip") {
+		clipStopIn[zoneIndex] = 0;             // a clip picked by hand or over OSC is not on a timer
 		syncClipNumber(zoneIndex);
 		applyClipFollows(zoneIndex);
 	} else if (name == "Clip X" || name == "Clip Y") {
+		clipStopIn[zoneIndex] = 0;
 		applyClipNumber(zoneIndex, name);
 	}
 
@@ -592,8 +613,10 @@ function clearZoneBlock(index) {
 	local.sendUniverse(universeNet(universe), universeSubnet(universe), universeUniverse(universe), b[BLOCK_START], zeros);
 }
 
-function pushZone(index) {
-	if (suspendUpdates) return false;
+// 'force' is for the update thread: it pushes even while a command on another thread
+// has updates suspended, because nobody else is going to push this zone for it.
+function pushZone(index, force) {
+	if (suspendUpdates && !force) return false;
 
 	var z = getZoneContainer(index);
 	if (z == null) return false;
@@ -685,6 +708,50 @@ function buildZoneBytes(z, size) {
 }
 
 // ============================================================
+// Timed clips
+// ============================================================
+// Select Clip's Duration works like the MIDI module's Full Note "On Time": the clip goes
+// on now and the module takes it off again later. A custom module has no timer of its
+// own - util.getTime() is a float of the machine's uptime, too coarse after a few weeks
+// up, and util.delayThreadMS() blocks whichever thread called it - so the clock is
+// update(), which Chataigne calls from the script's own thread at script.setUpdateRate().
+// Each zone keeps the seconds it has left and update() subtracts the deltaTime it is
+// handed, so no wall clock is involved at all.
+//
+// That thread runs with the script engine's lock disabled. It is the same footing that
+// sequence triggers and delayed consequences already fire commands from (the Sequence
+// and Stagger Launcher threads), so nothing new is being risked, but update() is still
+// kept trivial: an idle tick is eight comparisons and a return, and only a zone whose
+// time has run out does any real work.
+function update(deltaTime) {
+	for (var i = 1; i <= MAX_ZONES; i++) {
+		if (clipStopIn[i] <= 0) continue;
+		clipStopIn[i] = clipStopIn[i] - deltaTime;
+		if (clipStopIn[i] > 0) continue;
+		clipStopIn[i] = 0;
+		stopClipAfterDuration(i);
+	}
+}
+
+// Same result as Select Clip > Stop clips, done from the update thread. The Clip change
+// handler would normally sync the pair, apply the follow rules and push, but it stays
+// quiet while a command on the message thread has updates suspended, so all three are
+// done here directly and the push is forced.
+function stopClipAfterDuration(index) {
+	var z = getZoneContainer(index);
+	if (z == null) return;
+
+	var wasSuspended = suspendUpdates;
+	suspendUpdates = true;
+	z.getChild("Clip").setData(0);
+	syncClipNumber(index);
+	applyClipFollows(index);
+	suspendUpdates = wasSuspended;
+
+	pushZone(index, true);
+}
+
+// ============================================================
 // Command callbacks (names must match module.json "callback")
 // ============================================================
 function cmdSetArm(zone, on) { setOnZones(zone, "Arm", on); }
@@ -697,6 +764,7 @@ function cmdResetZone(zone) {
 	var idx = zoneIndices(zone);
 	for (var i = 0; i < idx.length; i++) {
 		var z = getZoneContainer(idx[i]);
+		clipStopIn[idx[i]] = 0;
 		suspendUpdates = true;
 		z.getChild("Arm").set(false);
 		z.getChild("Intensity").set(1);
@@ -722,22 +790,51 @@ function cmdResetZone(zone) {
 	}
 }
 
-// Straight from Liberation's clip settings header. Goes through the Clip X / Clip Y
-// parameters so the whole zone lands in the same state as typing the pair by hand.
-function cmdSelectClipNumber(zone, x, y) {
+// Chataigne calls this with the new command every time a Select Clip consequence or
+// mapping output is created (module.json "setupCallback"). Command parameters are
+// otherwise fixed by module.json, and this is what turns the command's Clip enum into
+// the same whole-deck list the zones have, at the deck width set right now.
+function setupSelectClipCommand(cmd) {
+	var clip = cmd.getChild("Clip");
+	if (clip == null) return;
+	setEnumOptions(clip, clipKeys(), null, "");
+}
+
+// One command for every way of naming a clip. Mode "number" is the pair straight from
+// Liberation's clip settings header, "list" is the deck list above, "stop" clears the
+// zone. Selecting goes through the zone's own parameters, so the zone lands in the same
+// state as if the user had typed it, and a Duration puts the zone on the countdown.
+function cmdSelectClip(zone, mode, x, y, clip, duration) {
+	var m = "" + mode;
 	var idx = zoneIndices(zone);
 	for (var i = 0; i < idx.length; i++) {
-		var z = getZoneContainer(idx[i]);
+		var index = idx[i];
+		var z = getZoneContainer(index);
+		clipStopIn[index] = 0;                 // whatever was pending is superseded
+
 		suspendUpdates = true;
-		z.getChild("Clip X").set(clampInt(x, CLIP_NUMBER_NONE, MAX_CLIP_X));
-		z.getChild("Clip Y").set(clampInt(y, CLIP_NUMBER_NONE, MAX_CLIP_Y));
-		applyClipNumber(idx[i], "");           // both figures came from the command
+		if (m == SELECT_MODE_LIST || m == SELECT_MODE_STOP) {
+			z.getChild("Clip").setData(m == SELECT_MODE_STOP ? 0 : clampInt(toInt(clip), 0, lastClipIndex()));
+			syncClipNumber(index);
+			applyClipFollows(index);
+		} else {
+			z.getChild("Clip X").set(clampInt(x, CLIP_NUMBER_NONE, MAX_CLIP_X));
+			z.getChild("Clip Y").set(clampInt(y, CLIP_NUMBER_NONE, MAX_CLIP_Y));
+			applyClipNumber(index, "");           // both figures came from the command
+		}
 		suspendUpdates = false;
-		pushZone(idx[i]);
+		pushZone(index);
+
+		// the countdown only starts once a clip is actually on
+		if (duration > 0 && toInt(z.getChild("Clip").get()) > 0) clipStopIn[index] = duration;
 	}
 }
 
-function cmdClearClip(zone) { setDataOnZones(zone, "Clip", 0); }
+function cmdClearClip(zone) {
+	var idx = zoneIndices(zone);
+	for (var i = 0; i < idx.length; i++) clipStopIn[idx[i]] = 0;
+	setDataOnZones(zone, "Clip", 0);
+}
 
 function cmdSetColour(zone, colour) { setOnZones(zone, "Colour", colour); }
 function cmdSetColourBlend(zone, value) { setOnZones(zone, "Colour Blend", value); }

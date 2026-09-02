@@ -2,15 +2,15 @@
 	"name": "Liberation DMX",
 	"type": "DMX",
 	"path": "Software",
-	"version": "1.8.0",
-	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind a single Clip dropdown listing the whole deck by Liberation's own clip numbers, or typed straight in as a Clip X / Clip Y pair; position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
+	"version": "1.9.0",
+	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind a single Clip dropdown listing the whole deck by Liberation's own clip numbers, or typed straight in as a Clip X / Clip Y pair; the Select Clip command offers both, a Stop clips mode, and a Duration after which the clip is stopped again. Position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
 	"url": "https://github.com/Fohdeesha/chataigne-liberation-dmx",
 	"downloadURL": "https://github.com/Fohdeesha/chataigne-liberation-dmx/archive/refs/heads/master.zip",
 
 	"hasInput": false,
 	"hasOutput": true,
 	"hideDefaultCommands": true,
-	"hideDefaultParameters": [ "autoAdd", "sendOnChangeOnly" ],
+	"hideDefaultParameters": [ "autoAdd", "sendOnChangeOnly", "artNet/input", "pass_through" ],
 
 	"defaults":
 	{
@@ -54,7 +54,7 @@
 				"min": 1,
 				"max": 2048,
 				"default": 96,
-				"description": "How wide your Liberation clip deck is, in columns. Only sizes each zone's Clip list, so keep it just past the rightmost column you use. Liberation's own factory project is 89 columns wide. Lowering it past a zone's current clip clears that zone's clip."
+				"description": "How wide your Liberation clip deck is, in columns. Only sizes each zone's Clip list (and the Clip list of Select Clip consequences created afterwards), so keep it just past the rightmost column you use. Liberation's own factory project is 89 columns wide. Lowering it past a zone's current clip clears that zone's clip."
 			},
 			"Auto Address":
 			{
@@ -177,15 +177,50 @@
 			}
 		},
 
-		"Select Clip Number":
+		"Select Clip":
 		{
 			"menu": "Clip",
-			"callback": "cmdSelectClipNumber",
+			"callback": "cmdSelectClip",
+			"setupCallback": "setupSelectClipCommand",
 			"parameters":
 			{
 				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to target. 0 = all zones." },
-				"X": { "type": "Integer", "min": -1, "max": 2047, "default": 0, "description": "First figure of Liberation's clip number: deck column, 0 = leftmost. Right-click a clip in Liberation and its settings header prints the pair. Clamped to Setup > Deck Columns. -1 = no clip." },
-				"Y": { "type": "Integer", "min": -1, "max": 4, "default": 0, "description": "Second figure of Liberation's clip number: deck row, 0 = top. -1 = no clip." }
+				"Mode":
+				{
+					"type": "Enum",
+					"options":
+					{
+						"Clip number": "number",
+						"Clip list": "list",
+						"Stop clips": "stop"
+					},
+					"description": "Clip number: type the X / Y pair Liberation prints in a clip's settings header. Clip list: pick the clip from a list of the whole deck. Stop clips: clear whatever the zone is playing, and disarm it when Arm Follows Clip is on."
+				},
+				"X":
+				{
+					"type": "Integer", "min": -1, "max": 2047, "default": 0,
+					"description": "First figure of Liberation's clip number: deck column, 0 = leftmost. Right-click a clip in Liberation and its settings header prints the pair. Clamped to Setup > Deck Columns.",
+					"dependency": { "source": "mode", "value": "number", "check": "equals", "action": "show" }
+				},
+				"Y":
+				{
+					"type": "Integer", "min": -1, "max": 4, "default": 0,
+					"description": "Second figure of Liberation's clip number: deck row, 0 = top.",
+					"dependency": { "source": "mode", "value": "number", "check": "equals", "action": "show" }
+				},
+				"Clip":
+				{
+					"type": "Enum",
+					"options": { "None (no clip)": 0 },
+					"description": "Every clip on the deck, named the way Liberation names it (x-y). The list is sized by Setup > Deck Columns at the moment this consequence is created.",
+					"dependency": { "source": "mode", "value": "list", "check": "equals", "action": "show" }
+				},
+				"Duration":
+				{
+					"type": "Float", "min": 0, "max": 3600, "default": 0, "ui": "time",
+					"description": "How long the clip plays before the module stops it again (clears the clip, and disarms the zone when Arm Follows Clip is on), like the MIDI module's Full Note 'On Time'. 0 = hold until something else changes the clip. Selecting another clip, Stop clips, Clear Clip or Reset Zone on the same zone cancels a pending stop.",
+					"dependency": { "source": "mode", "value": "stop", "check": "notEquals", "action": "show" }
+				}
 			}
 		},
 		"Clear Clip":
@@ -194,7 +229,7 @@
 			"callback": "cmdClearClip",
 			"parameters":
 			{
-				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to clear (Gobo Select 0 = no clip). 0 = all zones." }
+				"Zone": { "type": "Integer", "min": 0, "max": 8, "default": 1, "description": "Zone to clear (Gobo Select 0 = no clip). 0 = all zones. Same as Select Clip in its Stop clips mode." }
 			}
 		},
 

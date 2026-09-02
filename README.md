@@ -57,13 +57,27 @@ The module uses Liberation's X-Y clip deck coordinates to address clips. To see 
 
 ![Liberation clip example](docs/liberation-clips.png)
 
-Enter those X-Y coordinate numbers (22-1) into your Chataigne trigger/mapping/etc:
+Enter those X-Y coordinate numbers (22-1) into your Chataigne trigger/mapping/etc using the
+**Select Clip** command:
 
 ![chataigne-trigger](docs/chataigne-trigger.png)
 
+Select Clip has three modes:
+
+- **Clip number** - the X / Y pair above, typed straight in
+- **Clip list** - a dropdown of the whole deck by the same `x-y` names. The list is sized by
+  Setup > Deck Columns at the moment the consequence is created
+- **Stop clips** - clears whatever the zone is playing (and disarms it, see below), so nobody
+  has to know that `-1` / `-1` means "no clip"
+
+**Duration** works like the MIDI module's Full Note *On Time*: the clip goes on when the
+trigger fires and the module stops it again that many seconds later. `0` holds the clip until
+something else changes it. Selecting another clip on the same zone, Stop clips, Clear Clip or
+Reset Zone cancels a pending stop. The stop lands within 40 ms of its time.
+
 With the default module configuration, selecting a clip like above is enough to put light in the air.
 The **Arm Follows Clip** and **Intensity Follows Clip** automatically arm the zone and raise its Intensity on
-every clip change, and selecting `None` for the clip (-1 and -1 for X/Y) disarms it again.
+every clip change, and stopping the clip (Stop clips, Clear Clip, or `None` on the zone) disarms it again.
 *This means choosing a
 clip immediately enables laser output for that zone*. Switch both options off in the module if you
 want to drive Arm yourself. Master Intensity scales every zone on the way out without
@@ -90,6 +104,11 @@ Start Address per zone by hand if you have modified the defaults in Liberation.
 - Leave DMX Type on Art-Net and leave Send On Change Only alone (hidden, off by
   default). Liberation drops a zone after 2 seconds without fresh data, so the
   stream has to be continuous. sACN is not supported
+- The Art-Net Input and Pass-through sections of a stock DMX module are hidden: this
+  module only ever sends
+- A clip that is on a Duration countdown stays on if the project is reloaded or the
+  module script is reloaded before the time is up - the countdown lives in the script,
+  not in the project
 - Removed zones are blanked first. Lowering Zone Count, switching Extended to
   Basic, or re-addressing a zone zeroes the vacated channels, so nothing is left
   streaming an armed state with no UI attached to it
