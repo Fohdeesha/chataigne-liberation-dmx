@@ -2,7 +2,7 @@
 	"name": "Liberation DMX",
 	"type": "DMX",
 	"path": "Software",
-	"version": "1.9.0",
+	"version": "1.9.1",
 	"description": "Drive Liberation laser software through its DMX Input system over Art-Net. Up to 8 zones, each mapped to one Liberation DMX Input profile (Basic 16ch or Extended 32ch). Gobo Bank / Gobo Select are hidden behind a single Clip dropdown listing the whole deck by Liberation's own clip numbers, or typed straight in as a Clip X / Clip Y pair; the Select Clip command offers both, a Stop clips mode, and a Duration after which the clip is stopped again. Position is a normalized Point2D written to the 16-bit coarse/fine channel pairs.",
 	"url": "https://github.com/Fohdeesha/chataigne-liberation-dmx",
 	"downloadURL": "https://github.com/Fohdeesha/chataigne-liberation-dmx/archive/refs/heads/master.zip",
@@ -10,7 +10,7 @@
 	"hasInput": false,
 	"hasOutput": true,
 	"hideDefaultCommands": true,
-	"hideDefaultParameters": [ "autoAdd", "sendOnChangeOnly", "artNet/input", "pass_through" ],
+	"hideDefaultParameters": [ "dmxType", "sendRate", "useMulticast", "autoAdd", "sendOnChangeOnly", "artNet/input", "pass_through" ],
 
 	"defaults":
 	{
@@ -86,7 +86,15 @@
 			"Log Addressing":
 			{
 				"type": "Trigger",
-				"description": "Print each zone's universe, channel range and profile to the log, so it can be copied into Liberation's DMX Input window."
+				"description": "Re-check the addressing, refresh Address Map below and print it to the Logger panel (View > Logger)."
+			},
+			"Address Map":
+			{
+				"type": "String",
+				"default": "",
+				"readOnly": true,
+				"multiline": true,
+				"description": "Universe, channel range and profile of every zone, as they must be entered in Liberation's DMX Input window. Kept current, with any addressing problem listed underneath."
 			}
 		},
 		"Global":

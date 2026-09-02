@@ -145,9 +145,33 @@ var universesVerified = false;     // once true, the lookup stays out of the hot
 function init() {
 	suspendUpdates = false;                // recover if a previous run died mid-update
 	script.setUpdateRate(CLIP_STOP_UPDATE_RATE);
+	enableScriptLog();
+
+	// No zone tree yet means the module was just added (a loaded project restores the
+	// tree before the script runs), so this is the one time to set the panel's defaults.
+	var freshModule = getZonesContainer() == null;
+
 	rebuildZones();
 	ready = true;
-	script.log("Liberation DMX ready - " + toInt(getSetupValue("Zone Count", 0)) + " zone(s). Use 'Log Addressing' to print the channel map for Liberation's DMX Input window.");
+
+	if (freshModule) {
+		var universes = findContainer(local.parameters, "Output Universes");
+		if (universes != null) universes.setCollapsed(true);
+	}
+
+	script.log("Liberation DMX ready - " + toInt(getSetupValue("Zone Count", 0)) + " zone(s). Setup > Address Map shows what to enter in Liberation's DMX Input window.");
+}
+
+// A script's log lines and warnings only reach the Logger panel while its own Log
+// toggle is on, and that toggle defaults to off and is hidden from the editor. Every
+// addressing warning this script raises goes through it, so switch it on ourselves.
+function enableScriptLog() {
+	var scripts = findContainer(local, "Scripts");
+	if (scripts == null) return;
+	var me = findContainer(scripts, "liberationDMX");
+	if (me == null) return;
+	var logToggle = me.getChild("Log");
+	if (logToggle != null) logToggle.set(true);
 }
 
 function moduleParameterChanged(param) {
@@ -481,8 +505,11 @@ function warnAddressing(key, message) {
 	script.logWarning(message);
 }
 
+// Checks every zone's placement, warns once per problem, and rewrites Setup > Address Map
+// so the Inspector always shows the current map with any problem listed under it.
 function validateAddressing() {
 	var used = [];                                  // "universe:channel" strings already claimed
+	var problems = [];                              // short versions of the warnings, for the map
 
 	for (var i = 1; i <= MAX_ZONES; i++) {
 		var z = getZoneContainer(i);
@@ -494,12 +521,14 @@ function validateAddressing() {
 
 		if (start + size - 1 > 512) {
 			warnAddressing("overflow:" + toInt(i), "Zone " + toInt(i) + " needs channels " + toInt(start) + "-" + toInt(start + size - 1) + " but a universe only has 512. Lower its Start Address or move it to another universe.");
+			problems.push("Zone " + toInt(i) + " runs past channel 512 - lower its Start Address or move it to another universe");
 		}
 
 		for (var c = start; c < start + size && c <= 512; c++) {
 			var key = toInt(universe) + ":" + toInt(c);
 			if (used.indexOf(key) >= 0) {
 				warnAddressing("overlap:" + toInt(i), "Zone " + toInt(i) + " overlaps another zone at universe " + toInt(universe) + ", channel " + toInt(c) + ". Liberation will see both zones fighting over the same channels.");
+				problems.push("Zone " + toInt(i) + " overlaps another zone at universe " + toInt(universe) + ", channel " + toInt(c));
 				break;
 			}
 			used.push(key);
@@ -507,25 +536,45 @@ function validateAddressing() {
 
 		if (!outputUniverseExists(universe)) {
 			warnAddressing("universe:" + toInt(universe), "Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
+			problems.push("Universe " + toInt(universe) + " is missing under Output Universes (Art-Net " + artnetSignatureString(universe) + ") - nothing is sent to Zone " + toInt(i) + " until it is added");
 		}
 	}
+
+	writeAddressMap(problems);
+	return problems;
+}
+
+// One line per zone, the way Liberation's DMX Input window wants it, then the problems.
+function zoneAddressLine(index) {
+	var z = getZoneContainer(index);
+	if (z == null) return "";
+	var size = zoneProfileSize(z);
+	var universe = toInt(z.getChild("Universe").get());
+	var start = toInt(z.getChild("Start Address").get());
+	return "Zone " + toInt(index) + ": universe " + toInt(universe) + ", channels " + toInt(start) + "-" + toInt(start + size - 1) + ", " + (size == 16 ? PROFILE_BASIC_KEY : PROFILE_EXTENDED_KEY) + (z.getChild("Enabled").get() ? "" : " (disabled)");
+}
+
+function addressMapLines(problems) {
+	var lines = [];
+	for (var i = 1; i <= MAX_ZONES; i++) if (getZoneContainer(i) != null) lines.push(zoneAddressLine(i));
+	if (lines.length == 0) lines.push("No zones. Raise Zone Count.");
+	for (var p = 0; p < problems.length; p++) lines.push("! " + problems[p]);
+	return lines;
+}
+
+function writeAddressMap(problems) {
+	var setup = getSetupContainer();
+	if (setup == null) return;
+	var map = setup.getChild("Address Map");
+	if (map == null) return;
+	map.set(addressMapLines(problems).join("\n"));
 }
 
 function logAddressing() {
 	warnedAddressing = [];                          // this button is the re-check - always report
+	var lines = addressMapLines(validateAddressing());   // refreshes the map and re-warns
 	script.log("--- Liberation DMX addressing (set these in Liberation's DMX Input window) ---");
-	var any = false;
-	for (var i = 1; i <= MAX_ZONES; i++) {
-		var z = getZoneContainer(i);
-		if (z == null) continue;
-		any = true;
-		var size = zoneProfileSize(z);
-		var universe = toInt(z.getChild("Universe").get());
-		var start = toInt(z.getChild("Start Address").get());
-		script.log("Zone " + toInt(i) + " : universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + "), channels " + toInt(start) + "-" + toInt(start + size - 1) + ", profile " + (size == 16 ? PROFILE_BASIC_KEY : PROFILE_EXTENDED_KEY) + (z.getChild("Enabled").get() ? "" : " [disabled]"));
-	}
-	if (!any) script.log("No zones. Raise Setup > Zone Count.");
-	validateAddressing();
+	for (var i = 0; i < lines.length; i++) script.log(lines[i]);
 }
 
 // Liberation UI universe (1-based) -> Art-Net Port-Address (0-based) -> Chataigne net/subnet/universe

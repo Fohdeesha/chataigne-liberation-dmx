@@ -86,6 +86,11 @@ The Auto Address option (enabled by default) stacks zones automatically from Bas
 next universe when a block would cross channel 512. This matches Liberation's DMX Input Settings behavior when adding profiles, so it typically shouldn't need to be modified. Turn it off to set Universe and
 Start Address per zone by hand if you've modified the defaults in Liberation.
 
+**Setup > Address Map** always shows every zone's universe, channel range and profile, exactly
+what goes into Liberation's DMX Input window, with any addressing problem (a missing output
+universe, an overlap, a block running past channel 512) listed underneath. Log Addressing
+prints the same thing to the Logger panel.
+
 ## Extra Info
 
 - A zone/laser only outputs light if Arm is on, a clip is
@@ -98,12 +103,12 @@ Start Address per zone by hand if you've modified the defaults in Liberation.
   authored (the default), `0` collapses it to nothing, `-1` mirrors it
 - Universes must exist under Module Parameters > Output Universes. Chataigne
   only transmits the universes listed there. One ships with the module
-  (Liberation universe 1) and the log names any other universe you need to add.
+  (Liberation universe 1) and Address Map names any other universe you need to add.
   Hit Rebuild Zones afterwards
-- Leave DMX Type on Art-Net and leave Send On Change Only alone (hidden, off by
-  default). Liberation drops a zone after 2 seconds without fresh data, so the
-  stream has to be continuous. sACN is not supported
-- The Art-Net Input and Pass-through sections of a stock DMX module are hidden: this
+- DMX Type, Send Rate and Multicast are fixed at Art-Net, 44 Hz and off, and hidden along
+  with Send On Change Only. Liberation drops a zone after 2 seconds without fresh data, so
+  the stream has to be continuous. sACN is not supported
+- The Art-Net Input and Pass-through sections of a stock DMX module are hidden too: this
   module only ever sends
 - A clip that is on a Duration countdown stays on if the project is reloaded or the
   module script is reloaded before the time is up - the countdown lives in the script,
