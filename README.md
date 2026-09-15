@@ -86,6 +86,10 @@ The Auto Address option (enabled by default) stacks zones automatically from Bas
 next universe when a block would cross channel 512. This matches Liberation's DMX Input Settings behavior when adding profiles, so it typically shouldn't need to be modified. Turn it off to set Universe and
 Start Address per zone by hand if you've modified the defaults in Liberation.
 
+Zones share a universe rather than getting one each — eight Extended 32ch zones come to 256
+channels, so a default rig never leaves universe 1 and only ever needs the one Output Universe
+the module ships with.
+
 The **Setup > Address Map** box always shows every zone's universe, channel range and profile, exactly
 as shown in Liberation's DMX Input window. Also shows any addressing problem (a missing output
 universe, an overlap, a block running past channel 512, etc). The Log Addressing button

@@ -139,6 +139,18 @@ var BLOCK_SIZE = 2;
 var pendingFullPush = false;
 var universesVerified = false;     // once true, the lookup stays out of the hot path
 
+// The same load order made validateAddressing() cry wolf on every project load. A custom
+// module's script is loaded twice: once while the module is being constructed, before any
+// saved data exists, and again once the project has restored it. On that first pass the
+// Output Universes really are empty - Chataigne skips the one it would otherwise create
+// while a file is loading - so every zone looks unrouted through no fault of the user.
+// An empty list is therefore not evidence of anything: it buys silence and a re-check
+// from update(), which only starts running once the session has finished loading and so
+// always sees the settled tree.
+var LOAD_SETTLE_SECONDS = 2;
+var loadSettled = false;           // until then, "no universes at all" proves nothing
+var settleIn = 0;                  // seconds left on that re-check, 0 = none pending
+
 // ============================================================
 // Entry points
 // ============================================================
@@ -229,10 +241,19 @@ function setupParameterChanged(name) {
 		pushAllZones();
 		validateAddressing();
 	} else if (name == "Rebuild Zones") {
+		endLoadWindow();
 		rebuildZones();
 	} else if (name == "Log Addressing") {
+		endLoadWindow();
 		logAddressing();
 	}
+}
+
+// Both of those buttons are somebody asking a question by hand, long after any load, so
+// they answer now instead of leaving the universe check to the re-check in update().
+function endLoadWindow() {
+	loadSettled = true;
+	settleIn = 0;
 }
 
 // ============================================================
@@ -511,13 +532,20 @@ function validateAddressing() {
 	var used = [];                                  // "universe:channel" strings already claimed
 	var problems = [];                              // short versions of the warnings, for the map
 
+	// Nothing routed anywhere and the project may still be loading: say nothing now and
+	// look again in a moment, rather than blaming the user for Chataigne's restore order.
+	var canJudgeUniverses = loadSettled || outputUniverseCount() > 0;
+	if (!canJudgeUniverses && settleIn <= 0) settleIn = LOAD_SETTLE_SECONDS;
+
 	for (var i = 1; i <= MAX_ZONES; i++) {
 		var z = getZoneContainer(i);
 		if (z == null) continue;
 
+		// Read through containerValue: the re-check above runs on the update thread, and a
+		// zone half-built by a rebuild on the message thread would otherwise throw here.
 		var size = zoneProfileSize(z);
-		var universe = toInt(z.getChild("Universe").get());
-		var start = toInt(z.getChild("Start Address").get());
+		var universe = toInt(containerValue(z, "Universe", 1));
+		var start = toInt(containerValue(z, "Start Address", 1));
 
 		if (start + size - 1 > 512) {
 			warnAddressing("overflow:" + toInt(i), "Zone " + toInt(i) + " needs channels " + toInt(start) + "-" + toInt(start + size - 1) + " but a universe only has 512. Lower its Start Address or move it to another universe.");
@@ -534,7 +562,7 @@ function validateAddressing() {
 			used.push(key);
 		}
 
-		if (!outputUniverseExists(universe)) {
+		if (canJudgeUniverses && !outputUniverseExists(universe)) {
 			warnAddressing("universe:" + toInt(universe), "Zone " + toInt(i) + " targets universe " + toInt(universe) + " (Art-Net " + artnetSignatureString(universe) + ") but the module has no matching Output Universe, so nothing will be sent. Add it under Module Parameters > Output Universes, then hit Rebuild Zones.");
 			problems.push("Universe " + toInt(universe) + " is missing under Output Universes (Art-Net " + artnetSignatureString(universe) + ") - nothing is sent to Zone " + toInt(i) + " until it is added");
 		}
@@ -549,9 +577,9 @@ function zoneAddressLine(index) {
 	var z = getZoneContainer(index);
 	if (z == null) return "";
 	var size = zoneProfileSize(z);
-	var universe = toInt(z.getChild("Universe").get());
-	var start = toInt(z.getChild("Start Address").get());
-	return "Zone " + toInt(index) + ": universe " + toInt(universe) + ", channels " + toInt(start) + "-" + toInt(start + size - 1) + ", " + (size == 16 ? PROFILE_BASIC_KEY : PROFILE_EXTENDED_KEY) + (z.getChild("Enabled").get() ? "" : " (disabled)");
+	var universe = toInt(containerValue(z, "Universe", 1));
+	var start = toInt(containerValue(z, "Start Address", 1));
+	return "Zone " + toInt(index) + ": universe " + toInt(universe) + ", channels " + toInt(start) + "-" + toInt(start + size - 1) + ", " + (size == 16 ? PROFILE_BASIC_KEY : PROFILE_EXTENDED_KEY) + (containerValue(z, "Enabled", true) ? "" : " (disabled)");
 }
 
 function addressMapLines(problems) {
@@ -584,6 +612,14 @@ function universeUniverse(universe) { return toInt(universe - 1) & 0x0F; }
 
 function artnetSignatureString(universe) {
 	return "net " + toInt(universeNet(universe)) + " / subnet " + toInt(universeSubnet(universe)) + " / universe " + toInt(universeUniverse(universe));
+}
+
+// How many Output Universes the module holds, or 0 while the manager is missing - both
+// are "nothing to match against", which is all the caller wants to know.
+function outputUniverseCount() {
+	var mgr = findContainer(local.parameters, "Output Universes");
+	if (mgr == null) return 0;
+	return mgr.getContainers().length;
 }
 
 function outputUniverseExists(universe) {
@@ -770,9 +806,27 @@ function buildZoneBytes(z, size) {
 // That thread runs with the script engine's lock disabled. It is the same footing that
 // sequence triggers and delayed consequences already fire commands from (the Sequence
 // and Stagger Launcher threads), so nothing new is being risked, but update() is still
-// kept trivial: an idle tick is eight comparisons and a return, and only a zone whose
-// time has run out does any real work.
+// kept trivial: an idle tick is nine comparisons and a return, and only a zone whose
+// time has run out - or the one-off re-check below - does any real work.
 function update(deltaTime) {
+	// The post-load re-check. Armed only while the module looked unrouted, and it fires
+	// once: from here on an empty Output Universes list is a real problem worth saying.
+	// Held off while the message thread has updates suspended, because that is exactly
+	// when it is adding and removing zone containers, and reading a tree mid-rebuild from
+	// this thread is what would take the thread down for good.
+	if (settleIn > 0) {
+		if (suspendUpdates || !ready) {
+			settleIn = LOAD_SETTLE_SECONDS;
+		} else {
+			settleIn = settleIn - deltaTime;
+			if (settleIn <= 0) {
+				settleIn = 0;
+				loadSettled = true;
+				validateAddressing();
+			}
+		}
+	}
+
 	for (var i = 1; i <= MAX_ZONES; i++) {
 		if (clipStopIn[i] <= 0) continue;
 		clipStopIn[i] = clipStopIn[i] - deltaTime;
