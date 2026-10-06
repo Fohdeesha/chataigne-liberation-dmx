@@ -51,6 +51,9 @@ Set Zone Count, then drive each `Zones > Zone N` container: Arm, Intensity,
 Clip, Colour, Position, Scale, Rotation, Zoom, plus FX and Tempo on the Extended
 profile. All of it is also exposed as Commands for Mappings and Sequences (you can also send commands to zone 0 to control all zones simultaneously) and over OSC/OSCQuery.
 
+Clips play in their own colours by default. To override that with the zone's Colour from
+Chataigne, turn up Colour Blend.
+
 ### Finding a clip
 
 The module uses Liberation's X-Y clip deck coordinates to address clips. To see this just right click any clip in liberation, and the clip number is the very first line in clip deck X-Y format. Simply use that x-y number in chataigne. **Do not use the DMX values displayed here**. For example, to trigger the following clip from a timeline trigger, output to zone 1:

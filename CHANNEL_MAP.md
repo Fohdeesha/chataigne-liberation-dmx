@@ -19,7 +19,7 @@ Channel numbers below are offsets *within* the block.
 | 5 | Red | 255 | `Colour` R | `round(r * 255)` |
 | 6 | Green | 255 | `Colour` G | `round(g * 255)` |
 | 7 | Blue | 255 | `Colour` B | `round(b * 255)` |
-| 8 | Colour Blend | 255 | `Colour Blend` 0..1 | `round(v * 255)` — 0 = clip colour, 255 = desk RGB |
+| 8 | Colour Blend | 255 | `Colour Blend` 0..1 | `round(v * 255)` — 0 = clip colour (the default here), 255 = desk RGB |
 | 9 | Zoom | 255 | `Zoom` 0..1 | `round(v * 255)` — 0 = collapsed, 255 = normal |
 | 10 | Scale X | 255 | `Scale.x` −1..1 | `round((v + 1) * 127.5)` → 0 / 128 / 255 |
 | 11 | Scale Y | 255 | `Scale.y` −1..1 | same |

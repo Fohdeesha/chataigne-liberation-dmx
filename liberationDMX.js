@@ -339,7 +339,7 @@ function ensureZone(zones, index) {
 	addInt(z, "Clip Y", "Second figure of Liberation's clip number: deck row, 0 = top. -1 = no clip.", CLIP_NUMBER_NONE, CLIP_NUMBER_NONE, MAX_CLIP_Y);
 	syncClipNumber(index);                 // the Clip dropdown is the source of truth, here and on load
 	addColor(z, "Colour", "Desk RGB colour. Alpha is ignored - use Intensity for brightness.", [1, 1, 1, 1]);
-	addFloat(z, "Colour Blend", "0 = the clip's own colour, 1 = the desk RGB colour above.", 1, 0, 1);
+	addFloat(z, "Colour Blend", "0 = the clip's own colour, 1 = the desk RGB colour above.", 0, 0, 1);
 	addFloat(z, "Zoom", "0 = collapsed, 1 = normal size.", 1, 0, 1);
 	addPoint2D(z, "Position", "-1..1 on each axis, (0,0) = centre. +X right, +Y DOWN (Liberation's convention). Sent 16-bit over the coarse + fine channel pairs.", 0, 0, -1, 1);
 	addPoint2D(z, "Scale", "Size on each axis: 1 = 100%, the clip as authored (DMX 255). 0 = 0%, nothing renders (DMX 128). -1 = 100% mirrored on that axis (DMX 0).", 1, 1, -1, 1);
@@ -874,7 +874,7 @@ function cmdResetZone(zone) {
 		z.getChild("Clip").setData(0);
 		syncClipNumber(idx[i]);
 		z.getChild("Colour").set([1, 1, 1, 1]);
-		z.getChild("Colour Blend").set(1);
+		z.getChild("Colour Blend").set(0);
 		z.getChild("Zoom").set(1);
 		z.getChild("Position").set(0, 0);
 		z.getChild("Scale").set(1, 1);
